@@ -52,7 +52,7 @@ struct UniformBufferObject {
 //TODO: Move it somewhere more appropriate
 //The vertex data structure, for a 2d vertex and it's color
 struct Vertex {
-    glm::vec2 pos;
+    glm::vec3 pos;
     glm::vec3 color;
 };
 //TODO: Move it somewhere more appropriate
