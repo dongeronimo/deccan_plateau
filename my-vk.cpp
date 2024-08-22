@@ -3,13 +3,16 @@
 #include "my-vk-extensions.h"
 #include "my-vk-validationLayers.h"
 #include <map>
+#include <array>
 #include <cassert>
 #include <set>
 #include "my-vk-shaders.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
+#include <glm/gtc/quaternion.hpp>
+#include "object_namer.h"
 #include <chrono>
+#include "entities/game-object.h"
 //the mesh
 const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
@@ -471,12 +474,16 @@ void CreateGraphicsPipeline(VkContext& ctx)
     //pipeline layout, to pass data to the shaders, sends nothing for now
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1; 
-    pipelineLayoutInfo.pSetLayouts = &ctx.descriptorSetLayout; 
+    std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts = {
+        ctx.helloCameraDescriptorSetLayout,
+        ctx.helloObjectDescriptorSetLayout
+    };
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()); 
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data(); 
     pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
     pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
     if (vkCreatePipelineLayout(ctx.device, &pipelineLayoutInfo, 
-        nullptr, &ctx.pipelineLayout) != VK_SUCCESS) {
+        nullptr, &ctx.helloPipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
     //the actual pipeline
@@ -494,7 +501,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     //link the pipeline layout to the pipeline
-    pipelineInfo.layout = ctx.pipelineLayout;
+    pipelineInfo.layout = ctx.helloPipelineLayout;
     //link the render pass to the pipeline
     pipelineInfo.renderPass = ctx.renderPass;
     pipelineInfo.subpass = 0;
@@ -520,7 +527,7 @@ void LoadShaderModules(VkContext& ctx)
 
 void DestroyPipelineLayout(VkContext& ctx)
 {
-    vkDestroyPipelineLayout(ctx.device, ctx.pipelineLayout, nullptr);
+    vkDestroyPipelineLayout(ctx.device, ctx.helloPipelineLayout, nullptr);
 }
 
 void CreateRenderPasses(VkContext& ctx)
@@ -681,15 +688,36 @@ void RecordCommandBuffer(VkContext& ctx, uint32_t imageIndex)
     vkCmdSetScissor(ctx.commandBuffers[ctx.currentFrame], 0, 1, &scissor);
 
     //bind the vertex buffer
-    VkBuffer vertexBuffers[] = { ctx.vertexBuffer };
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(ctx.commandBuffers[ctx.currentFrame], 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(ctx.commandBuffers[ctx.currentFrame], ctx.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-    //bind the descriptor set
-    vkCmdBindDescriptorSets(ctx.commandBuffers[ctx.currentFrame], 
-        VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.pipelineLayout, 0, 1, &ctx.descriptorSets[ctx.currentFrame], 0, nullptr);
+    //VkBuffer vertexBuffers[] = { ctx.vertexBuffer };
+    //VkDeviceSize offsets[] = { 0 };
+    //vkCmdBindVertexBuffers(ctx.commandBuffers[ctx.currentFrame], 0, 1, vertexBuffers, offsets);
+    //vkCmdBindIndexBuffer(ctx.commandBuffers[ctx.currentFrame], ctx.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    ////bind the camera descriptor set
+    //vkCmdBindDescriptorSets(
+    //    ctx.commandBuffers[ctx.currentFrame],
+    //    VK_PIPELINE_BIND_POINT_GRAPHICS,   // We assume it's a graphics pipeline
+    //    ctx.helloPipelineLayout,                    // The pipeline layout that matches the shader's descriptor set layouts
+    //    0,                                 // firstSet, which is the index of the first descriptor set (set = 0)
+    //    1,                                 // descriptorSetCount, number of descriptor sets to bind
+    //    &ctx.helloCameraDescriptorSets[ctx.currentFrame],              // Pointer to the array of descriptor sets (only one in this case)
+    //    0,                                 // dynamicOffsetCount, assuming no dynamic offsets
+    //    nullptr                            // pDynamicOffsets, assuming no dynamic offsets
+    //);
+    //bind the object-specific descriptor set
+    // Bind the object-specific descriptor set (set = 1)
+    //vkCmdBindDescriptorSets(
+    //    ctx.commandBuffers[ctx.currentFrame], 
+    //    VK_PIPELINE_BIND_POINT_GRAPHICS,
+    //    ctx.helloPipelineLayout,
+    //    1,                                 // firstSet, index of the first descriptor set (set = 1)
+    //    1,                                 // descriptorSetCount, number of descriptor sets to bind
+    //    &ctx.helloObjectDescriptorSets[ctx.currentFrame],              // Pointer to the array of descriptor sets (only one in this case)
+    //    0,
+    //    nullptr
+    //);
     //Draw command
-    vkCmdDrawIndexed(ctx.commandBuffers[ctx.currentFrame], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(ctx.commandBuffers[ctx.currentFrame], 
+        static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
     //end the render .pass
     vkCmdEndRenderPass(ctx.commandBuffers[ctx.currentFrame]);
     //end the command buffer
@@ -698,27 +726,25 @@ void RecordCommandBuffer(VkContext& ctx, uint32_t imageIndex)
     }
 }
 
-void DrawFrame(VkContext& ctx)
-{
+bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     // check window area to deal with the degenerate case of the user dragging a border until
     // it becomes zero
     int width = 0, height = 0;
     glfwGetFramebufferSize(ctx.window, &width, &height);
     bool zeroArea = (width == 0) || (height == 0);
     if (zeroArea)
-        return;
+        return false;
 
     //Fences block cpu, waiting for result. So we wait for the previous frame to finish
     vkWaitForFences(ctx.device, 1, &ctx.inFlightFences[ctx.currentFrame], VK_TRUE, UINT64_MAX);
     //get an image from the swap chain
-    uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(ctx.device, ctx.swapChain, UINT64_MAX, 
+    VkResult result = vkAcquireNextImageKHR(ctx.device, ctx.swapChain, UINT64_MAX,
         ctx.imageAvailableSemaphores[ctx.currentFrame], //this semaphore will be signalled when the presentation is done with this image
         VK_NULL_HANDLE, //no fence cares  
         &imageIndex);
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         RecreateSwapChain(ctx);
-        return;
+        return false;
     }
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
@@ -727,10 +753,127 @@ void DrawFrame(VkContext& ctx)
     vkResetFences(ctx.device, 1, &ctx.inFlightFences[ctx.currentFrame]);
     //resets the command buffer
     vkResetCommandBuffer(ctx.commandBuffers[ctx.currentFrame], 0);
-    //updates the uniform buffer
-    UpdateUniformBuffer(ctx, ctx.currentFrame);
+    //begin the command buffer
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0; // Optional
+    beginInfo.pInheritanceInfo = nullptr; // Optional
+
+    if (vkBeginCommandBuffer(ctx.commandBuffers[ctx.currentFrame], &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording command buffer!");
+    }
+
+    //begin the render pass of the render pass
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = ctx.renderPass;
+    renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = { 0, 0 };
+    renderPassInfo.renderArea.extent = ctx.swapChainExtent;
+    VkClearValue clearColor = { {{ ctx.clearColor[0], ctx.clearColor[1], ctx.clearColor[2], ctx.clearColor[3]}} };
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+    vkCmdBeginRenderPass(ctx.commandBuffers[ctx.currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    //bind the pipeline
+    vkCmdBindPipeline(ctx.commandBuffers[ctx.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.graphicsPipeline);
+    //viewport and scissors are dynamic
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(ctx.swapChainExtent.width);
+    viewport.height = static_cast<float>(ctx.swapChainExtent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(ctx.commandBuffers[ctx.currentFrame], 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = { 0, 0 };
+    scissor.extent = ctx.swapChainExtent;
+    vkCmdSetScissor(ctx.commandBuffers[ctx.currentFrame], 0, 1, &scissor);
+    return true;
+}
+
+void DrawFrame(VkContext& ctx, std::vector<entities::GameObject*> gameObjects)
+{
+    //// check window area to deal with the degenerate case of the user dragging a border until
+    //// it becomes zero
+    //int width = 0, height = 0;
+    //glfwGetFramebufferSize(ctx.window, &width, &height);
+    //bool zeroArea = (width == 0) || (height == 0);
+    //if (zeroArea)
+    //    return;
+
+    ////Fences block cpu, waiting for result. So we wait for the previous frame to finish
+    //vkWaitForFences(ctx.device, 1, &ctx.inFlightFences[ctx.currentFrame], VK_TRUE, UINT64_MAX);
+    ////get an image from the swap chain
+    //uint32_t imageIndex;
+    //VkResult result = vkAcquireNextImageKHR(ctx.device, ctx.swapChain, UINT64_MAX, 
+    //    ctx.imageAvailableSemaphores[ctx.currentFrame], //this semaphore will be signalled when the presentation is done with this image
+    //    VK_NULL_HANDLE, //no fence cares  
+    //    &imageIndex);
+    //if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+    //    RecreateSwapChain(ctx);
+    //    return;
+    //}
+    //else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+    //    throw std::runtime_error("failed to acquire swap chain image!");
+    //}
+    ////if the swapchain is ok we can reset the fence
+    //vkResetFences(ctx.device, 1, &ctx.inFlightFences[ctx.currentFrame]);
+    ////resets the command buffer
+    //vkResetCommandBuffer(ctx.commandBuffers[ctx.currentFrame], 0);
+    ////updates the uniform buffer
+    //UpdateUniformBuffer(ctx, ctx.currentFrame);
     //fills the command buffer for the given image
-    RecordCommandBuffer(ctx, imageIndex);
+    //RecordCommandBuffer(ctx, imageIndex);
+    //submits the queue:
+    //VkSubmitInfo submitInfo{};
+    //submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    //// it'll wait until the colours are written to the framebuffer
+    //VkSemaphore waitSemaphores[] = { ctx.imageAvailableSemaphores[ctx.currentFrame] };
+    //VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    //submitInfo.waitSemaphoreCount = 1;
+    //submitInfo.pWaitSemaphores = waitSemaphores;
+    //submitInfo.pWaitDstStageMask = waitStages;
+    //submitInfo.commandBufferCount = 1;
+    //submitInfo.pCommandBuffers = &ctx.commandBuffers[ctx.currentFrame];
+
+    //VkSemaphore signalSemaphores[] = { ctx.renderFinishedSemaphores[ctx.currentFrame] };
+    //submitInfo.signalSemaphoreCount = 1;
+    //submitInfo.pSignalSemaphores = signalSemaphores;
+
+    //if (vkQueueSubmit(ctx.graphicsQueue, 1, &submitInfo, ctx.inFlightFences[ctx.currentFrame]) != VK_SUCCESS) {
+    //    throw std::runtime_error("failed to submit draw command buffer!");
+    //}
+    ////presentation
+    //VkPresentInfoKHR presentInfo{};
+    //presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+    //presentInfo.waitSemaphoreCount = 1;
+    //presentInfo.pWaitSemaphores = signalSemaphores;
+    //
+    //VkSwapchainKHR swapChains[] = { ctx.swapChain };
+    //presentInfo.swapchainCount = 1;
+    //presentInfo.pSwapchains = swapChains;
+    //presentInfo.pImageIndices = &imageIndex;
+
+    //VkResult result = vkQueuePresentKHR(ctx.presentQueue, &presentInfo);
+    //if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || ctx.framebufferResized) {
+    //    ctx.framebufferResized = false;
+    //    RecreateSwapChain(ctx);
+    //}
+    //else if (result != VK_SUCCESS) {
+    //    throw std::runtime_error("failed to present swap chain image!");
+    //}
+    //ctx.currentFrame = (ctx.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
+    //end the render .pass
+    vkCmdEndRenderPass(ctx.commandBuffers[ctx.currentFrame]);
+    //end the command buffer
+    if (vkEndCommandBuffer(ctx.commandBuffers[ctx.currentFrame]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer!");
+    }
     //submits the queue:
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -756,13 +899,13 @@ void DrawFrame(VkContext& ctx)
 
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
-    
+
     VkSwapchainKHR swapChains[] = { ctx.swapChain };
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pImageIndices = &currentImageIndex;
 
-    result = vkQueuePresentKHR(ctx.presentQueue, &presentInfo);
+    VkResult result = vkQueuePresentKHR(ctx.presentQueue, &presentInfo);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || ctx.framebufferResized) {
         ctx.framebufferResized = false;
         RecreateSwapChain(ctx);
@@ -771,6 +914,46 @@ void DrawFrame(VkContext& ctx)
         throw std::runtime_error("failed to present swap chain image!");
     }
     ctx.currentFrame = (ctx.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx)
+{
+    //copies camera data to gpu
+    memcpy(ctx.helloCameraUniformBufferAddress[ctx.currentFrame], &camera, sizeof(camera));
+    //copies object data to gpu
+    go->CommitDataToObjectBuffer(ctx.currentFrame);
+    VkCommandBuffer cmdBuffer = ctx.commandBuffers[ctx.currentFrame];
+    VkBuffer vertexBuffers[] = { go->mVertexBuffer };
+    VkDeviceSize offsets[] = { 0 };
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
+    vkCmdBindIndexBuffer(cmdBuffer, go->mIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    //bind the camera descriptor set
+    vkCmdBindDescriptorSets(
+        ctx.commandBuffers[ctx.currentFrame],
+        VK_PIPELINE_BIND_POINT_GRAPHICS,   // We assume it's a graphics pipeline
+        ctx.helloPipelineLayout,                    // The pipeline layout that matches the shader's descriptor set layouts
+        0,                                 // firstSet, which is the index of the first descriptor set (set = 0)
+        1,                                 // descriptorSetCount, number of descriptor sets to bind
+        &ctx.helloCameraDescriptorSets[ctx.currentFrame],              // Pointer to the array of descriptor sets (only one in this case)
+        0,                                 // dynamicOffsetCount, assuming no dynamic offsets
+        nullptr                            // pDynamicOffsets, assuming no dynamic offsets
+    );
+    //bind the object-specific descriptor set
+    // Bind the object-specific descriptor set (set = 1)
+    VkDescriptorSet objectDescriptorSet = go->GetDescriptorSet(ctx.currentFrame);
+    vkCmdBindDescriptorSets(
+        ctx.commandBuffers[ctx.currentFrame], 
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        ctx.helloPipelineLayout,
+        1,                                 // firstSet, index of the first descriptor set (set = 1)
+        1,                                 // descriptorSetCount, number of descriptor sets to bind
+        &objectDescriptorSet,              // Pointer to the array of descriptor sets (only one in this case)
+        0,
+        nullptr
+    );
+    //Draw command
+    vkCmdDrawIndexed(ctx.commandBuffers[ctx.currentFrame],
+        static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 }
 
 void CreateSyncObjects(VkContext& ctx)
@@ -868,11 +1051,11 @@ void CreateVertexBuffer(VkContext& ctx)
     
 }
 
-void DestroyVertexBuffer(VkContext& ctx)
-{
-    vkDestroyBuffer(ctx.device, ctx.vertexBuffer, nullptr);
-    vkFreeMemory(ctx.device, ctx.vertexBufferMemory, nullptr);
-}
+//void DestroyVertexBuffer(VkContext& ctx)
+//{
+//    vkDestroyBuffer(ctx.device, ctx.vertexBuffer, nullptr);
+//    vkFreeMemory(ctx.device, ctx.vertexBufferMemory, nullptr);
+//}
 
 void CreateIndexBuffer(VkContext& ctx)
 {
@@ -899,11 +1082,11 @@ void CreateIndexBuffer(VkContext& ctx)
     vkFreeMemory(ctx.device, stagingBufferMemory, nullptr);
 }
 
-void DestroyIndexBuffer(VkContext& ctx)
-{
-    vkDestroyBuffer(ctx.device, ctx.indexBuffer, nullptr);
-    vkFreeMemory(ctx.device, ctx.indexBufferMemory, nullptr);
-}
+//void DestroyIndexBuffer(VkContext& ctx)
+//{
+//    vkDestroyBuffer(ctx.device, ctx.indexBuffer, nullptr);
+//    vkFreeMemory(ctx.device, ctx.indexBufferMemory, nullptr);
+//}
 
 void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags properties, VkBuffer& buffer,
@@ -974,105 +1157,221 @@ void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkCon
     vkFreeCommandBuffers(ctx.device, ctx.commandPool, 1, &commandBuffer);
 }
 
-void CreateDescriptorSetLayout(VkContext& ctx)
+void CreateDescriptorSetLayoutForObject(VkContext& ctx)
 {
-    //the binding
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0; //binding 0, see vertex shader
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.descriptorCount = 1;//only one uniform buffer object
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //this descriptor is for the vertex shader
-    //the descriptor set, that contains the bindings
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &uboLayoutBinding;
+    VkDescriptorSetLayoutBinding objectLayoutBinding{};
+    objectLayoutBinding.binding = 0;
+    objectLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    objectLayoutBinding.descriptorCount = 1;
+    objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    objectLayoutBinding.pImmutableSamplers = nullptr; // Optional
 
-    if (vkCreateDescriptorSetLayout(ctx.device, &layoutInfo, nullptr, &ctx.descriptorSetLayout) != VK_SUCCESS) {
+    VkDescriptorSetLayoutCreateInfo objectLayoutInfo{};
+    objectLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    objectLayoutInfo.bindingCount = 1;
+    objectLayoutInfo.pBindings = &objectLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(ctx.device, &objectLayoutInfo,
+        nullptr, &ctx.helloObjectDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout for object");
+    }
+}
+
+void CreateDescriptorSetLayoutForCamera(VkContext& ctx)
+{
+    VkDescriptorSetLayoutBinding cameraLayoutBinding{};
+    cameraLayoutBinding.binding = 0;
+    cameraLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    cameraLayoutBinding.descriptorCount = 1;
+    cameraLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    cameraLayoutBinding.pImmutableSamplers = nullptr; // Optional
+
+    VkDescriptorSetLayoutCreateInfo cameraLayoutInfo{};
+    cameraLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    cameraLayoutInfo.bindingCount = 1;
+    cameraLayoutInfo.pBindings = &cameraLayoutBinding;
+
+    if (vkCreateDescriptorSetLayout(ctx.device, &cameraLayoutInfo, 
+        nullptr, &ctx.helloCameraDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 }
 
 void DestroyDescriptorSets(VkContext& ctx)
 {
-    vkDestroyDescriptorSetLayout(ctx.device, ctx.descriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(ctx.device, ctx.helloCameraDescriptorSetLayout, nullptr);
 }
+/// <summary>
+/// Each object will have it's own buffer for it's uniforms
+/// </summary>
+/// <param name="ctx"></param>
+//void CreateUniformBuffersForObject(VkContext& ctx)
+//{
+//    VkDeviceSize bufferSize = sizeof(ObjectUniformBuffer);
+//
+//    ctx.helloObjectUniformBuffer.resize(MAX_FRAMES_IN_FLIGHT);
+//    ctx.helloObjectUniformBufferMemory.resize(MAX_FRAMES_IN_FLIGHT);
+//    ctx.helloObjectUniformBufferAddress.resize(MAX_FRAMES_IN_FLIGHT);
+//    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+//        CreateBuffer(bufferSize,
+//            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, //will be used as uniform buffer
+//            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, //visible to both gpu and cpu
+//            ctx.helloObjectUniformBuffer[i], ctx.helloObjectUniformBufferMemory[i], ctx);
+//        //map the memory, forever    
+//        vkMapMemory(ctx.device, ctx.helloObjectUniformBufferMemory[i], 0,
+//            bufferSize, 0, &ctx.helloObjectUniformBufferAddress[i]);
+//    }
+//}
 
-void CreateUniformBuffers(VkContext& ctx)
+void CreateUniformBuffersForCamera(VkContext& ctx)
 {
-    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+    VkDeviceSize bufferSize = sizeof(CameraUniformBuffer);
 
-    ctx.uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    ctx.uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    ctx.uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+    ctx.helloCameraUniformBuffer.resize(MAX_FRAMES_IN_FLIGHT);
+    ctx.helloCameraUniformBufferMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    ctx.helloCameraUniformBufferAddress.resize(MAX_FRAMES_IN_FLIGHT);
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         CreateBuffer(bufferSize, 
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, //will be used as uniform buffer
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, //visible to both gpu and cpu
-            ctx.uniformBuffers[i], ctx.uniformBuffersMemory[i], ctx);
+            ctx.helloCameraUniformBuffer[i], ctx.helloCameraUniformBufferMemory[i], ctx);
         //map the memory, forever    
-        vkMapMemory(ctx.device, ctx.uniformBuffersMemory[i], 0, bufferSize, 0, &ctx.uniformBuffersMapped[i]);
+        vkMapMemory(ctx.device, ctx.helloCameraUniformBufferMemory[i], 0,
+            bufferSize, 0, &ctx.helloCameraUniformBufferAddress[i]);
     }
 }
 
-void UpdateUniformBuffer(VkContext& vkContext, uint32_t currentImage)
-{
-    //get current time
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-    UniformBufferObject ubo{};
-    //rotation around z based on current time
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    //look at matrix for view
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    //some perspective projection
-    ubo.proj = glm::perspective(glm::radians(45.0f), 
-        vkContext.swapChainExtent.width / (float)vkContext.swapChainExtent.height, 0.1f, 10.0f);
-    //GOTCHA: GLM is for opengl, the y coords are inverted. With this trick we the correct that
-    ubo.proj[1][1] *= -1;
-    memcpy(vkContext.uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
-}
-
+//void UpdateUniformBuffer(VkContext& vkContext, uint32_t currentImage)
+//{
+//    //get current time
+//    static auto startTime = std::chrono::high_resolution_clock::now();
+//    auto currentTime = std::chrono::high_resolution_clock::now();
+//    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+//    
+//    //Updates the content of the camera buffer
+//    CameraUniformBuffer cameraBuffer;
+//    cameraBuffer.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+//    //some perspective projection
+//    cameraBuffer.proj = glm::perspective(glm::radians(45.0f),
+//        vkContext.swapChainExtent.width / (float)vkContext.swapChainExtent.height, 0.1f, 10.0f);
+//    //GOTCHA: GLM is for opengl, the y coords are inverted. With this trick we the correct that
+//    cameraBuffer.proj[1][1] *= -1;
+//    memcpy(vkContext.helloCameraUniformBufferAddress[currentImage], &cameraBuffer, sizeof(cameraBuffer));
+//    //Content will vary based on the object
+//    ObjectUniformBuffer objBuffer;
+//    glm::vec3 position = glm::vec3(1.0f, 0.0f, 0.0f); // Example position
+//    glm::quat orientation = glm::rotate(glm::mat4(1.0f), 
+//        time * glm::radians(90.0f), 
+//        glm::vec3(0.0f, 0.0f, 1.0f));
+//    objBuffer.model = glm::mat4(1.0f);
+//    objBuffer.model *= glm::translate(glm::mat4(1.0f), position);
+//    objBuffer.model *= glm::mat4_cast(orientation);
+//    
+//
+//    //glm::quat orientation = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+//    //glm::mat4 modelMatrix = glm::mat4(1.0f); // Start with the identity matrix
+//    //modelMatrix = glm::translate(modelMatrix, position);
+//    //modelMatrix *= glm::mat4_cast(orientation); // Convert quaternion to a rotation matrix and multiply
+//    //objBuffer.model = glm::mat4(1.0f);
+//    memcpy(vkContext.helloObjectUniformBufferAddress[currentImage], &objBuffer, sizeof(objBuffer));
+//}
+/// <summary>
+/// To create descriptor sets i need to create descriptor pools to provide them. The descriptor sets
+/// are created using the layouts, from the descriptor pools.
+/// </summary>
+/// <param name="ctx"></param>
 void CreateDescriptorPool(VkContext& ctx)
 {
-    //creates a descriptor pool to hold my uniform buffers
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);//one uniform buffer for each frame in flight
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    if (vkCreateDescriptorPool(ctx.device, &poolInfo, nullptr, &ctx.descriptorPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
-    }
+    //camera descriptor pool - there will be only one camera
+    VkDescriptorPoolSize cameraPoolSize{};
+    cameraPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    cameraPoolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
 
+    VkDescriptorPoolCreateInfo cameraPoolInfo{};
+    cameraPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    cameraPoolInfo.poolSizeCount = 1;
+    cameraPoolInfo.pPoolSizes = &cameraPoolSize;
+    cameraPoolInfo.maxSets = 1 * MAX_FRAMES_IN_FLIGHT; // Only one camera. NEVER FORGET TO MULTIPLY BY MAX_FRAMES_IN_
+
+    if (vkCreateDescriptorPool(ctx.device, &cameraPoolInfo, nullptr, &ctx.helloCameraDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create camera descriptor pool!");
+    }
+    SET_NAME(ctx.helloCameraDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloCameraDescriptorPool");
+    ////object descriptor pool - there can be up to 100 objects 
+    //VkDescriptorPoolSize objectPoolSize{};
+    //objectPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    //objectPoolSize.descriptorCount = 100 * MAX_FRAMES_IN_FLIGHT; // Example: support up to 100 objects
+
+    //VkDescriptorPoolCreateInfo objectPoolInfo{};
+    //objectPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    //objectPoolInfo.poolSizeCount = 1;
+    //objectPoolInfo.pPoolSizes = &objectPoolSize;
+    //objectPoolInfo.maxSets = 100 * MAX_FRAMES_IN_FLIGHT; // Support up to 100 descriptor sets for objects
+
+    //if (vkCreateDescriptorPool(ctx.device, &objectPoolInfo, nullptr, &ctx.objectDescriptorPool) != VK_SUCCESS) {
+    //    throw std::runtime_error("Failed to create object descriptor pool!");
+    //}
+    //SET_NAME(ctx.objectDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "objectDescriptorPool");
 }
 
-void CreateDescriptorSets(VkContext& ctx)
+
+void CreateDescriptorSetsForObject(VkContext& ctx)
 {
+    //assert(ctx.objectDescriptorPool != VK_NULL_HANDLE);
+    ////one layout for each frame in flight, create the vector filling with the layout that i alredy have
+    //std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+    //    ctx.helloObjectDescriptorSetLayout);
+    //VkDescriptorSetAllocateInfo allocInfo{};
+    //allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    //allocInfo.descriptorPool = ctx.objectDescriptorPool;
+    ////one descriptor set for each frame in flight
+    //allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    //allocInfo.pSetLayouts = layouts.data();
+    //ctx.helloObjectDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    //if (vkAllocateDescriptorSets(ctx.device, &allocInfo, ctx.helloObjectDescriptorSets.data()) != VK_SUCCESS) {
+    //    throw std::runtime_error("failed to allocate descriptor sets for camera!");
+    //}
+    //for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    //    VkDescriptorBufferInfo bufferInfo{};
+    //    bufferInfo.buffer = ctx.helloObjectUniformBuffer[i];
+    //    bufferInfo.offset = 0;
+    //    bufferInfo.range = sizeof(ObjectUniformBuffer);
+    //    VkWriteDescriptorSet descriptorWrite{};
+    //    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    //    descriptorWrite.dstSet = ctx.helloObjectDescriptorSets[i];
+    //    descriptorWrite.dstBinding = 0;
+    //    descriptorWrite.dstArrayElement = 0;
+    //    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    //    descriptorWrite.descriptorCount = 1;
+    //    descriptorWrite.pBufferInfo = &bufferInfo;
+    //    vkUpdateDescriptorSets(ctx.device, 1, &descriptorWrite, 0, nullptr);
+    //}
+}
+
+void CreateDescriptorSetsForCamera(VkContext& ctx)
+{
+    assert(ctx.helloCameraDescriptorPool != VK_NULL_HANDLE);
     //one layout for each frame in flight, create the vector filling with the layout that i alredy have
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, ctx.descriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, 
+        ctx.helloCameraDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = ctx.descriptorPool;
+    allocInfo.descriptorPool = ctx.helloCameraDescriptorPool;
     //one descriptor set for each frame in flight
     allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
-    ctx.descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(ctx.device, &allocInfo, ctx.descriptorSets.data()) != VK_SUCCESS) {
-        throw std::runtime_error("failed to allocate descriptor sets!");
+    ctx.helloCameraDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(ctx.device, &allocInfo, ctx.helloCameraDescriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets for camera!");
     }
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = ctx.uniformBuffers[i];
+        bufferInfo.buffer = ctx.helloCameraUniformBuffer[i];
         bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(UniformBufferObject);
+        bufferInfo.range = sizeof(CameraUniformBuffer);
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = ctx.descriptorSets[i];
+        descriptorWrite.dstSet = ctx.helloCameraDescriptorSets[i];
         descriptorWrite.dstBinding = 0;
         descriptorWrite.dstArrayElement = 0;
         descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;

@@ -7,6 +7,9 @@
 #include <map>
 #include <array>
 #include <glm/glm.hpp>
+namespace entities {
+    class GameObject;
+}
 /// <summary>
 /// Stores the pointers to custom allocators for VK. Custom allocators are not
 /// striclty necessary but i'd like to let the hooks for using them in the code.
@@ -42,15 +45,34 @@ struct SwapChainSupportDetails {
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
-//Uniform buffer struct, equal to the one in the shader (ubo, binding 0)
-struct UniformBufferObject {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
+/// <summary>
+/// Holds the data for the camera. The camera tends to be the same for all
+/// objects in the scene. Corresponds to CameraUniformBuffer in 
+/// hello_shader.vert
+/// </summary>
+struct alignas(16) CameraUniformBuffer {
+    /// <summary>
+    /// View matrix 
+    /// </summary>
+    alignas(16)glm::mat4 view;
+    /// <summary>
+    /// Projection matrix
+    /// </summary>
+    alignas(16)glm::mat4 proj;
 };
+///// <summary>
+///// Holds object-specific data. Corresponds to ObjectUniformBuffer in 
+///// hello_shader.vert
+///// </summary>
+//struct alignas(16) ObjectUniformBuffer {
+//    /// <summary>
+//    /// Model matrix
+//    /// </summary>
+//    alignas(16)glm::mat4 model;
+//};
 
 //TODO: Move it somewhere more appropriate
-//The vertex data structure, for a 2d vertex and it's color
+//The vertex data structure, for a 3d vertex and it's color
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
@@ -145,7 +167,7 @@ struct VkContext
     std::map<std::string, VkShaderModule> shaderModules;
 
     VkRenderPass renderPass;
-    VkPipelineLayout pipelineLayout;
+    VkPipelineLayout helloPipelineLayout;
     /// <summary>
     /// The pipeline object. At the moment I have only one material (shaders + fixed states configs) so
     /// i have only one pipeline. In the future if i need more materials then i'll need more pipelines bc
@@ -174,21 +196,42 @@ struct VkContext
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
+#pragma region mesh
     //TODO: create a single, big ass VkDeviceMemory and do linear allocation of vertex and index buffers
     //TODO: merge the vertex buffer memory and the index buffer memory into a single memory.
     VkBuffer vertexBuffer; //TODO:  move to some kind of mesh object
     VkDeviceMemory vertexBufferMemory; //TODO: move to some kind of mesh object
     VkBuffer indexBuffer; //TODO: move this to some kind of mesh object
     VkDeviceMemory indexBufferMemory; //TODO: move this to some kind of mesh object
-    VkDescriptorSetLayout descriptorSetLayout;//TODO: this info is coupled to the shader and to the pipeline so it should be part of the material
-
+#pragma endregion
+#pragma region object
+    //std::vector<VkBuffer> helloObjectUniformBuffer;
+    //std::vector<VkDeviceMemory> helloObjectUniformBufferMemory;
+    //std::vector<void*> helloObjectUniformBufferAddress;
+    //std::vector<VkDescriptorSet> helloObjectDescriptorSets;
+#pragma endregion
+#pragma region hello_pipeline
+    std::vector<VkDescriptorSet> helloCameraDescriptorSets;
+    VkDescriptorSetLayout helloCameraDescriptorSetLayout;//TODO: this info is coupled to the shader and to the pipeline so it should be part of the material
     //One buffer for each frame in flight
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory; //TODO: there should be a big ass buffer for the uniforms, separated from the big ass buffer for the mesh data
-    std::vector<void*> uniformBuffersMapped;
+    std::vector<VkBuffer> helloCameraUniformBuffer;
+    std::vector<VkDeviceMemory> helloCameraUniformBufferMemory;
+    std::vector<void*> helloCameraUniformBufferAddress;
+    /// <summary>
+    /// This belongs to the pipeline, the pipeline must know it's layout
+    /// </summary>
+    VkDescriptorSetLayout helloObjectDescriptorSetLayout;
+    /// <summary>
+    /// A descriptor pool for the camera
+    /// </summary>
+    VkDescriptorPool helloCameraDescriptorPool;
+    /// <summary>
+    /// Other for the objects
+    /// </summary>
+    //VkDescriptorPool objectDescriptorPool;
+#pragma endregion
+    //VkDescriptorPool descriptorPool;
 
-    VkDescriptorPool descriptorPool;
-    std::vector<VkDescriptorSet> descriptorSets;
 };
 
 void DestroyImageViews(VkContext& ctx);
@@ -262,7 +305,7 @@ void CreateCommandBuffer(VkContext& ctx);
 
 void RecordCommandBuffer(VkContext& ctx, uint32_t imageIndex);
 
-void DrawFrame(VkContext& ctx);
+void DrawFrame(VkContext& ctx, std::vector<entities::GameObject*> gameObjects);
 
 void CreateSyncObjects(VkContext& ctx);
 
@@ -272,10 +315,10 @@ void RecreateSwapChain(VkContext& ctx);
 
 void CreateVertexBuffer(VkContext& ctx);
 
-void DestroyVertexBuffer(VkContext& ctx);
+//void DestroyVertexBuffer(VkContext& ctx);
 
 void CreateIndexBuffer(VkContext& ctx);
-void DestroyIndexBuffer(VkContext& ctx);
+//void DestroyIndexBuffer(VkContext& ctx);
 /// <summary>
 /// Custom vkbuffer factory to encapsulate the buffer creation process and
 /// avoid repeating boring code
@@ -291,15 +334,58 @@ void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkDeviceMemory& bufferMemory, VkContext& ctx);
 
 void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkContext& ctx);
+#pragma region hello_pipeline
+/// <summary>
+/// Each game object must have it's own descriptor set, they'll bound to the pipeline later
+/// </summary>
+/// <param name="ctx"></param>
+void CreateDescriptorSetsForObject(VkContext& ctx);
+/// <summary>
+/// Because hello shader has 2 sets i need to create a descriptor set layout for each
+/// set. This function here creates the descriptor set layout for the cameera set (set 0 in
+/// the shader) and stores it in ctx.helloCameraDescriptorSetLayout.
+/// </summary>
+/// <param name="ctx"></param>
+void CreateDescriptorSetLayoutForCamera(VkContext& ctx);
+/// <summary>
+/// The uniform buffers store data for the pipeline. The buffers live in three arrays, helloCameraUniformBuffer
+/// to store the buffer objects, helloCameraUniformBufferMemory to store their memories and 
+/// helloCameraUniformBufferAddress to store their addresses. The size of the array is FRAMES_IN_FLIGHT. I do that
+/// because since i have FRAMES_IN_FLIGHT concurrent frames, with one showing and other(s) drawing 
+/// </summary>
+/// <param name="vkContext"></param>
+void CreateUniformBuffersForCamera(VkContext& vkContext);
+/// <summary>
+/// Binds the descriptor set layout to the buffer that holds the data.
+/// </summary>
+/// <param name="ctx"></param>
+void CreateDescriptorSetsForCamera(VkContext& ctx);
 
-void CreateDescriptorSetLayout(VkContext& ctx);
+void CreateDescriptorSetLayoutForObject(VkContext& ctx);
 
+/// <summary>
+/// Each object will have it's own buffer for it's uniforms.
+/// </summary>
+/// <param name="ctx"></param>
+//void CreateUniformBuffersForObject(VkContext& ctx);
+#pragma endregion
 void DestroyDescriptorSets(VkContext& ctx);
 
-void CreateUniformBuffers(VkContext& vkContext);
 
-void UpdateUniformBuffer(VkContext& vkContext, uint32_t currentImage);
+//void UpdateUniformBuffer(VkContext& vkContext, uint32_t currentImage);
 
 void CreateDescriptorPool(VkContext& ctx);
+/// <summary>
+/// This is the function that begins the frames.
+/// It waits for the end of the other frame if the resources it'll use are blocked
+/// by it.
+/// It returns which image it'll use. The number of the frame is in ctx.currentFrame
+/// </summary>
+bool BeginFrame(VkContext& ctx, uint32_t& imageIndex);
+/// <summary>
+/// Ends the frame. It submits the command buffer to the queue and present
+/// the result using the swap chain
+/// </summary>
+void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
-void CreateDescriptorSets(VkContext& ctx);
+void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);

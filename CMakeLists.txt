@@ -31,7 +31,14 @@ add_executable(deccan-plateau-demo
     my-vk-validationLayers.cpp
     my-vk-validationLayers.h
 	my-vk-shaders.cpp
-	my-vk-shaders.h)
+	my-vk-shaders.h
+	object_namer.cpp
+	object_namer.h
+	concatenate.h
+    entities/game-object.cpp
+    entities/game-object.h
+)
+target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers
 target_include_directories(deccan-plateau-demo PRIVATE ${glm_SOURCE_DIR})
 # Link Vulkan library

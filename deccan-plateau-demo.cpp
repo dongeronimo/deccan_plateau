@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <vector>
+#include "object_namer.h"
+#include "entities/game-object.h"
+#include <chrono>
 VkContext vkContext{};
 
 const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
@@ -63,7 +67,7 @@ void myFreeFunction(
 #endif
     _aligned_free(pMemory);
 }
-
+std::vector<entities::GameObject*> gGameObjects{};
 
 int main(int argc, char** argv)
 {
@@ -94,20 +98,35 @@ int main(int argc, char** argv)
     CreateSurface(vkContext, window);
     SelectPhysicalDevice(vkContext);
     CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
+    vk::ObjectNamer::Instance().Init(vkContext.device);
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
     CreateRenderPasses(vkContext);
-    CreateDescriptorSetLayout(vkContext);
+    //the hello pipeline needs these descriptors.
+    CreateDescriptorSetLayoutForCamera(vkContext);
+    CreateDescriptorSetLayoutForObject(vkContext);
     CreateGraphicsPipeline(vkContext);
     CreateFramebuffers(vkContext);
     CreateCommandPool(vkContext);
     CreateVertexBuffer(vkContext);
     CreateIndexBuffer(vkContext);
-    CreateUniformBuffers(vkContext);
-    CreateDescriptorPool(vkContext);
-    CreateDescriptorSets(vkContext);
+    CreateUniformBuffersForCamera(vkContext);
+    //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
+    CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
+    CreateDescriptorSetsForObject(vkContext);//each object will have it's own descriptor set
+    CreateDescriptorSetsForCamera(vkContext);
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
+
+    //now that all vulkan infra is created we create the game objects
+    entities::GameObject* foo = new entities::GameObject(&vkContext, "foo",
+        vkContext.vertexBuffer, vkContext.indexBuffer, 6);
+    foo->SetPosition(glm::vec3{ 1,0,0 });
+    entities::GameObject* bar = new entities::GameObject(&vkContext, "bar",
+        vkContext.vertexBuffer, vkContext.indexBuffer, 6);
+    bar->SetPosition(glm::vec3{ -1,0,0 });
+    gGameObjects.push_back(foo);
+    gGameObjects.push_back(bar);
 
     MainLoop(window);
 
@@ -124,8 +143,8 @@ int main(int argc, char** argv)
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
     DestroyCommandPool(vkContext);
-    DestroyVertexBuffer(vkContext);
-    DestroyIndexBuffer(vkContext);
+    //DestroyVertexBuffer(vkContext);
+    //DestroyIndexBuffer(vkContext);
     DestroyLogicalDevice(vkContext);
     DestroySurface(vkContext);
     DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
@@ -139,6 +158,29 @@ void MainLoop(GLFWwindow* window)
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        DrawFrame(vkContext);
+        //Calculate time elapsed since start and delta time
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        static auto lastFrameTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float secondsSinceStart = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+        float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastFrameTime).count();
+        lastFrameTime = currentTime;
+        
+        CameraUniformBuffer cameraBuffer;
+        cameraBuffer.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        //some perspective projection
+        cameraBuffer.proj = glm::perspective(glm::radians(45.0f),
+            vkContext.swapChainExtent.width / (float)vkContext.swapChainExtent.height, 0.1f, 10.0f);
+        //GOTCHA: GLM is for opengl, the y coords are inverted. With this trick we the correct that
+        cameraBuffer.proj[1][1] *= -1;
+
+        uint32_t imageIndex;
+        if (BeginFrame(vkContext, imageIndex)) {
+            for (auto go : gGameObjects) {
+                DrawGameObject(go, cameraBuffer, vkContext);
+            }
+            EndFrame(vkContext, imageIndex);
+        }
+        
     }
 }
