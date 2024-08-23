@@ -37,6 +37,9 @@ add_executable(deccan-plateau-demo
 	concatenate.h
     entities/game-object.cpp
     entities/game-object.h
+
+    io/asset-paths.cpp
+    io/asset-paths.h
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers

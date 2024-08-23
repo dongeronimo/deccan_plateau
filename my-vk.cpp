@@ -13,6 +13,7 @@
 #include "object_namer.h"
 #include <chrono>
 #include "entities/game-object.h"
+#include "io/asset-paths.h"
 //the mesh
 const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
@@ -517,8 +518,10 @@ void CreateGraphicsPipeline(VkContext& ctx)
 
 void LoadShaderModules(VkContext& ctx)
 {
-    auto vertShaderCode = ReadFile("C:\\vk-study\\deccan_plateau\\build\\hello_shader_vert.spv");
-    auto fragShaderCode = ReadFile("C:\\vk-study\\deccan_plateau\\build\\hello_shader_frag.spv");
+    auto vsPath = io::CalculatePathForShader("hello_shader_vert.spv");
+    auto fsPath = io::CalculatePathForShader("hello_shader_frag.spv");
+    auto vertShaderCode = ReadFile(vsPath);
+    auto fragShaderCode = ReadFile(fsPath);
     VkShaderModule vert = CreateShaderModule(ctx.device, vertShaderCode);
     VkShaderModule frag = CreateShaderModule(ctx.device, fragShaderCode);
     ctx.shaderModules["hello_vertex"] = vert;
