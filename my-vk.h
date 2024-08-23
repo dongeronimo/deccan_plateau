@@ -204,12 +204,6 @@ struct VkContext
     VkBuffer indexBuffer; //TODO: move this to some kind of mesh object
     VkDeviceMemory indexBufferMemory; //TODO: move this to some kind of mesh object
 #pragma endregion
-#pragma region object
-    //std::vector<VkBuffer> helloObjectUniformBuffer;
-    //std::vector<VkDeviceMemory> helloObjectUniformBufferMemory;
-    //std::vector<void*> helloObjectUniformBufferAddress;
-    //std::vector<VkDescriptorSet> helloObjectDescriptorSets;
-#pragma endregion
 #pragma region hello_pipeline
     std::vector<VkDescriptorSet> helloCameraDescriptorSets;
     VkDescriptorSetLayout helloCameraDescriptorSetLayout;//TODO: this info is coupled to the shader and to the pipeline so it should be part of the material
@@ -303,10 +297,6 @@ void DestroyCommandPool(VkContext& ctx);
 
 void CreateCommandBuffer(VkContext& ctx);
 
-void RecordCommandBuffer(VkContext& ctx, uint32_t imageIndex);
-
-void DrawFrame(VkContext& ctx, std::vector<entities::GameObject*> gameObjects);
-
 void CreateSyncObjects(VkContext& ctx);
 
 void DestroySyncObjects(VkContext& ctx);
@@ -315,10 +305,7 @@ void RecreateSwapChain(VkContext& ctx);
 
 void CreateVertexBuffer(VkContext& ctx);
 
-//void DestroyVertexBuffer(VkContext& ctx);
-
 void CreateIndexBuffer(VkContext& ctx);
-//void DestroyIndexBuffer(VkContext& ctx);
 /// <summary>
 /// Custom vkbuffer factory to encapsulate the buffer creation process and
 /// avoid repeating boring code
@@ -335,11 +322,6 @@ void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
 
 void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkContext& ctx);
 #pragma region hello_pipeline
-/// <summary>
-/// Each game object must have it's own descriptor set, they'll bound to the pipeline later
-/// </summary>
-/// <param name="ctx"></param>
-void CreateDescriptorSetsForObject(VkContext& ctx);
 /// <summary>
 /// Because hello shader has 2 sets i need to create a descriptor set layout for each
 /// set. This function here creates the descriptor set layout for the cameera set (set 0 in

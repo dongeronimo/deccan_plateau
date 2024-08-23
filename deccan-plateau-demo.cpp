@@ -113,7 +113,6 @@ int main(int argc, char** argv)
     CreateUniformBuffersForCamera(vkContext);
     //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
     CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
-    CreateDescriptorSetsForObject(vkContext);//each object will have it's own descriptor set
     CreateDescriptorSetsForCamera(vkContext);
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
