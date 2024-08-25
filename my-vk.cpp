@@ -792,6 +792,7 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
     //bind the object-specific descriptor set
     // Bind the object-specific descriptor set (set = 1)
     VkDescriptorSet objectDescriptorSet = go->GetDescriptorSet(ctx.currentFrame);
+    uint32_t dynamicOffset = go->DynamicOffset(ctx.currentFrame);
     vkCmdBindDescriptorSets(
         ctx.commandBuffers[ctx.currentFrame], 
         VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -799,8 +800,8 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
         1,                                 // firstSet, index of the first descriptor set (set = 1)
         1,                                 // descriptorSetCount, number of descriptor sets to bind
         &objectDescriptorSet,              // Pointer to the array of descriptor sets (only one in this case)
-        0,
-        nullptr
+        1,
+        &dynamicOffset
     );
     //Draw command
     vkCmdDrawIndexed(ctx.commandBuffers[ctx.currentFrame],
@@ -871,9 +872,9 @@ uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, V
             return i;
         }
     }
-
     throw std::runtime_error("failed to find suitable memory type!");
 }
+
 void CreateVertexBuffer(VkContext& ctx)
 {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -1000,7 +1001,7 @@ void CreateDescriptorSetLayoutForObject(VkContext& ctx)
 {
     VkDescriptorSetLayoutBinding objectLayoutBinding{};
     objectLayoutBinding.binding = 0;
-    objectLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    objectLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     objectLayoutBinding.descriptorCount = 1;
     objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     objectLayoutBinding.pImmutableSamplers = nullptr; // Optional

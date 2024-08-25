@@ -10,6 +10,7 @@
 #include "object_namer.h"
 #include "entities/game-object.h"
 #include <chrono>
+
 VkContext vkContext{};
 
 const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
@@ -98,13 +99,20 @@ int main(int argc, char** argv)
     CreateSurface(vkContext, window);
     SelectPhysicalDevice(vkContext);
     CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
+    //it's best to create the namer as soon as possible.
     vk::ObjectNamer::Instance().Init(vkContext.device);
+
+    
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
     CreateRenderPasses(vkContext);
     //the hello pipeline needs these descriptors.
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
+    //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
+    //before the uniform buffer pool is created
+    entities::GameObjectUniformBufferPool::Initialize(&vkContext);
+
     CreateGraphicsPipeline(vkContext);
     CreateFramebuffers(vkContext);
     CreateCommandPool(vkContext);
@@ -144,6 +152,7 @@ int main(int argc, char** argv)
     DestroyCommandPool(vkContext);
     //DestroyVertexBuffer(vkContext);
     //DestroyIndexBuffer(vkContext);
+    entities::GameObjectUniformBufferPool::Destroy();
     DestroyLogicalDevice(vkContext);
     DestroySurface(vkContext);
     DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
