@@ -43,12 +43,12 @@ uint32_t GetNextGameObjectId() {
 }
 
 namespace entities {
-    GameObject::GameObject(VkContext* ctx, const std::string& name, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint16_t numberOfIndices):
-        mName(name), mDevice(ctx->device),mVertexBuffer(vertexBuffer),
-        mIndexBuffer(indexBuffer),mNumberOfIndices(numberOfIndices),
+    GameObject::GameObject(VkContext* ctx, const std::string& name, const Mesh* mesh):
+        mName(name), mDevice(ctx->device),mMesh(mesh),
         mOrientation(glm::quat()), mPosition(glm::vec3(0,0,0)),
         mId(GetNextGameObjectId())
     {
+        assert(mesh != nullptr);
         assert(gAvailableGameObjectsIds.size() == MAX_NUMBER_OF_GAME_OBJECTS);
         for (auto i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             auto objects = GameObjectUniformBufferPool::Get(mId*MAX_FRAMES_IN_FLIGHT + i); //the vk objects are contiguous.

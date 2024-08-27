@@ -8,6 +8,7 @@
 #define MAX_NUMBER_OF_GAME_OBJECTS 100
 struct VkContext;
 namespace entities {
+    class Mesh;
     /// <summary>
     /// Holds object-specific data. Corresponds to ObjectUniformBuffer in 
     /// hello_shader.vert
@@ -56,9 +57,7 @@ namespace entities {
     public:
         GameObject(VkContext* ctx, 
             const std::string& name, 
-            VkBuffer vertexBuffer,
-            VkBuffer indexBuffer,
-            uint16_t numberOfIndices);
+            const Mesh* mesh);
         void SetPosition(glm::vec3& pos) {
             mPosition = pos;
         }
@@ -71,12 +70,10 @@ namespace entities {
         uint32_t DynamicOffset(uint32_t frame)const {
             return (mId * MAX_FRAMES_IN_FLIGHT + frame) * sizeof(ObjectUniformBuffer);
         }
+        const Mesh* mMesh;
         const uint32_t mId;
         const std::string mName;
         const VkDevice mDevice;
-        const VkBuffer mVertexBuffer;
-        const VkBuffer mIndexBuffer;
-        const uint16_t mNumberOfIndices;
         void CommitDataToObjectBuffer(uint32_t currentFrame);
         VkDescriptorSet GetDescriptorSet(uint32_t id) const {
             return helloObjectDescriptorSets[id];

@@ -14,18 +14,8 @@
 #include <chrono>
 #include "entities/game-object.h"
 #include "io/asset-paths.h"
-//the mesh
-const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}
-};
-const std::vector<uint16_t> indices = {
-    0,1,2,
-    2,3,0
-};
-
+#include "entities/mesh.h"
+#include "concatenate.h"
 VkApplicationInfo GetAppInfo() {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -41,7 +31,7 @@ VkVertexInputBindingDescription GetBindingDescription()
 {
     VkVertexInputBindingDescription bindingDescription{};
     bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
+    bindingDescription.stride = sizeof(entities::Vertex);
     bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     return bindingDescription;
 }
@@ -52,13 +42,13 @@ std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions()
     //inPosition
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[0].offset = offsetof(Vertex, pos);
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = offsetof(entities::Vertex, pos);
     //inColor
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Vertex, color);
+    attributeDescriptions[1].offset = offsetof(entities::Vertex, color);
     return attributeDescriptions;
 }
 
@@ -219,7 +209,8 @@ void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector
     createInfo.pEnabledFeatures = &deviceFeatures;
     //The logical device extensions that i want
     const std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME //swapchain
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME, //swapchain
+        VK_EXT_DEBUG_MARKER_EXTENSION_NAME //renderdoc marker
     };
     createInfo.enabledExtensionCount = static_cast<uint32_t>( deviceExtensions.size() );
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
@@ -237,6 +228,10 @@ void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector
     }
     vkGetDeviceQueue(ctx.device, ctx.graphicsFamily, 0, &ctx.graphicsQueue);
     vkGetDeviceQueue(ctx.device, ctx.presentFamily, 0, &ctx.presentQueue);
+
+    ctx.vkCmdDebugMarkerBeginEXT = (PFN_vkCmdDebugMarkerBeginEXT)vkGetDeviceProcAddr(ctx.device, "vkCmdDebugMarkerBeginEXT");
+    ctx.vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(ctx.device, "vkCmdDebugMarkerEndEXT");
+    ctx.vkCmdDebugMarkerInsertEXT = (PFN_vkCmdDebugMarkerInsertEXT)vkGetDeviceProcAddr(ctx.device, "vkCmdDebugMarkerInsertEXT");
 }
 
 void DestroyLogicalDevice(VkContext& ctx)
@@ -767,20 +762,33 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
     ctx.currentFrame = (ctx.currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+void SetMark(std::array<float, 4> color, 
+    std::string name,
+    VkCommandBuffer cmd,
+    VkContext ctx) {
+    VkDebugMarkerMarkerInfoEXT markerInfo = {};
+    markerInfo.sType = VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT;
+    markerInfo.pNext = nullptr;
+    markerInfo.pMarkerName = name.c_str();
+    markerInfo.color[0] = color[0];              // Optional RGBA color
+    markerInfo.color[1] = color[1];
+    markerInfo.color[2] = color[2];
+    markerInfo.color[3] = color[3];
+    ctx.vkCmdDebugMarkerBeginEXT(cmd, &markerInfo);
+}
+
 void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx)
 {
+    VkCommandBuffer cmdBuffer = ctx.commandBuffers[ctx.currentFrame];
+    SetMark({ 1.0f, 0.0f, 0.0f, 1.0f }, go->mName, cmdBuffer, ctx);
     //copies camera data to gpu
     memcpy(ctx.helloCameraUniformBufferAddress[ctx.currentFrame], &camera, sizeof(camera));
     //copies object data to gpu
     go->CommitDataToObjectBuffer(ctx.currentFrame);
-    VkCommandBuffer cmdBuffer = ctx.commandBuffers[ctx.currentFrame];
-    VkBuffer vertexBuffers[] = { go->mVertexBuffer };
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
-    vkCmdBindIndexBuffer(cmdBuffer, go->mIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    go->mMesh->Bind(cmdBuffer);
     //bind the camera descriptor set
     vkCmdBindDescriptorSets(
-        ctx.commandBuffers[ctx.currentFrame],
+        cmdBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,   // We assume it's a graphics pipeline
         ctx.helloPipelineLayout,                    // The pipeline layout that matches the shader's descriptor set layouts
         0,                                 // firstSet, which is the index of the first descriptor set (set = 0)
@@ -794,7 +802,7 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
     VkDescriptorSet objectDescriptorSet = go->GetDescriptorSet(ctx.currentFrame);
     uint32_t dynamicOffset = go->DynamicOffset(ctx.currentFrame);
     vkCmdBindDescriptorSets(
-        ctx.commandBuffers[ctx.currentFrame], 
+        cmdBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         ctx.helloPipelineLayout,
         1,                                 // firstSet, index of the first descriptor set (set = 1)
@@ -804,8 +812,13 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
         &dynamicOffset
     );
     //Draw command
-    vkCmdDrawIndexed(ctx.commandBuffers[ctx.currentFrame],
-        static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(cmdBuffer,
+        static_cast<uint32_t>(go->mMesh->NumberOfIndices()), 
+        1, 
+        0, 
+        0, 
+        0);
+    ctx.vkCmdDebugMarkerEndEXT(cmdBuffer);
 }
 
 void CreateSyncObjects(VkContext& ctx)
@@ -875,63 +888,11 @@ uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, V
     throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void CreateVertexBuffer(VkContext& ctx)
-{
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-    //creates the staging buffer
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    CreateBuffer(bufferSize, 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, //Used as source from memory transfers
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, //memory is visibe to the cpu and gpu
-        stagingBuffer, stagingBufferMemory, ctx);
-    //copies data to the staging buffer
-    void* data;
-    vkMapMemory(ctx.device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t)bufferSize);
-    vkUnmapMemory(ctx.device, stagingBufferMemory);
-    //Creates the local device bufferr
-    CreateBuffer(bufferSize, 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, //used as transfer destination and vertex buffer
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, //memory is on the device, not in the gpu
-    ctx.vertexBuffer, ctx.vertexBufferMemory, ctx);
-    //copies from the staging buffer to the vertex buffer
-    CopyBuffer(stagingBuffer, ctx.vertexBuffer, bufferSize, ctx);
-    //destroy the staging buffers
-    vkDestroyBuffer(ctx.device, stagingBuffer, nullptr);
-    vkFreeMemory(ctx.device, stagingBufferMemory, nullptr);
-    
-}
-
-void CreateIndexBuffer(VkContext& ctx)
-{
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    CreateBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-        stagingBuffer, stagingBufferMemory, ctx);
-
-    void* data;
-    vkMapMemory(ctx.device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t)bufferSize);
-    vkUnmapMemory(ctx.device, stagingBufferMemory);
-
-    CreateBuffer(bufferSize, 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, 
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx.indexBuffer, ctx.indexBufferMemory, ctx);
-
-    CopyBuffer(stagingBuffer, ctx.indexBuffer, bufferSize, ctx);
-
-    vkDestroyBuffer(ctx.device, stagingBuffer, nullptr);
-    vkFreeMemory(ctx.device, stagingBufferMemory, nullptr);
-}
-
 void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags properties, VkBuffer& buffer,
     VkDeviceMemory& bufferMemory, VkContext& ctx)
 {
+    assert(size != 0);//size must not be zero
     //Buffer description
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1035,6 +996,7 @@ void CreateDescriptorSetLayoutForCamera(VkContext& ctx)
         nullptr, &ctx.helloCameraDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
+    SET_NAME(ctx.helloCameraDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, "CameraDescriptorSetLayout");
 }
 
 void DestroyDescriptorSets(VkContext& ctx)
@@ -1057,6 +1019,10 @@ void CreateUniformBuffersForCamera(VkContext& ctx)
         //map the memory, forever    
         vkMapMemory(ctx.device, ctx.helloCameraUniformBufferMemory[i], 0,
             bufferSize, 0, &ctx.helloCameraUniformBufferAddress[i]);
+        auto n0 = Concatenate("CameraBufferMemory", i);
+        SET_NAME(ctx.helloCameraUniformBufferMemory[i], VK_OBJECT_TYPE_DEVICE_MEMORY, n0.c_str());
+        auto n1 = Concatenate("CameraUniformBuffer", i);
+        SET_NAME(ctx.helloCameraUniformBuffer[i], VK_OBJECT_TYPE_BUFFER, n1.c_str());
     }
 }
 
@@ -1118,3 +1084,13 @@ void CreateDescriptorSetsForCamera(VkContext& ctx)
 
 }
 
+void VkContext::DestroyCameraBuffer(VkContext& ctx)
+{
+    for (auto& b : ctx.helloCameraUniformBuffer) {
+        vkDestroyBuffer(ctx.device, b, nullptr);
+    }
+    for (auto& b : ctx.helloCameraUniformBufferMemory) {
+        vkFreeMemory(ctx.device, b, nullptr);
+    }
+    vkDestroyDescriptorPool(ctx.device, ctx.helloCameraDescriptorPool, nullptr);
+}

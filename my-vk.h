@@ -71,12 +71,7 @@ struct alignas(16) CameraUniformBuffer {
 //    alignas(16)glm::mat4 model;
 //};
 
-//TODO: Move it somewhere more appropriate
-//The vertex data structure, for a 3d vertex and it's color
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-};
+
 //TODO: Move it somewhere more appropriate
 //Returns the vertex binding, it'll be one binding, with input per-vertex and stride equals to the
 //size of Vertex; 
@@ -89,6 +84,10 @@ std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions();
 /// </summary>
 struct VkContext
 {
+    PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBeginEXT = nullptr;
+    PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
+    PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
+
     GLFWwindow* window;
     /// <summary>
     /// TODO: Allow for many custom allocators, one for each situation
@@ -205,6 +204,7 @@ struct VkContext
     VkDeviceMemory indexBufferMemory; //TODO: move this to some kind of mesh object
 #pragma endregion
 #pragma region hello_pipeline
+    void DestroyCameraBuffer(VkContext& ctx);
     std::vector<VkDescriptorSet> helloCameraDescriptorSets;
     VkDescriptorSetLayout helloCameraDescriptorSetLayout;//TODO: this info is coupled to the shader and to the pipeline so it should be part of the material
     //One buffer for each frame in flight
@@ -303,9 +303,9 @@ void DestroySyncObjects(VkContext& ctx);
 
 void RecreateSwapChain(VkContext& ctx);
 
-void CreateVertexBuffer(VkContext& ctx);
+//void CreateVertexBuffer(VkContext& ctx);
 
-void CreateIndexBuffer(VkContext& ctx);
+//void CreateIndexBuffer(VkContext& ctx);
 /// <summary>
 /// Custom vkbuffer factory to encapsulate the buffer creation process and
 /// avoid repeating boring code

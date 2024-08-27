@@ -10,6 +10,21 @@
 #include "object_namer.h"
 #include "entities/game-object.h"
 #include <chrono>
+#include "entities/mesh.h"
+#include "io/mesh-load.h"
+//the mesh
+const std::vector<entities::Vertex> vertices = {
+    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}
+};
+const std::vector<uint16_t> indices = {
+    0,1,2,
+    2,3,0
+};
+
+std::map<std::string, entities::Mesh*> gMeshTable;
 
 VkContext vkContext{};
 
@@ -72,6 +87,9 @@ std::vector<entities::GameObject*> gGameObjects{};
 
 int main(int argc, char** argv)
 {
+    //Load the meshes from files to intermediary objects
+    std::shared_ptr<io::MeshData> monkeyMeshFile = io::LoadMeshes("monkey.glb")[0];
+    std::shared_ptr<io::MeshData> cubeMeshFile = io::LoadMeshes("colored_cube.glb")[0];
     //glfw initialization, for window system. I could have used a win32 window but it would
     //be much more work
     glfwInit();
@@ -116,8 +134,7 @@ int main(int argc, char** argv)
     CreateGraphicsPipeline(vkContext);
     CreateFramebuffers(vkContext);
     CreateCommandPool(vkContext);
-    CreateVertexBuffer(vkContext);
-    CreateIndexBuffer(vkContext);
+
     CreateUniformBuffersForCamera(vkContext);
     //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
     CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
@@ -125,12 +142,15 @@ int main(int argc, char** argv)
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
 
+    //create the mesh
+    entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
+    gMeshTable.insert({ monkeyMesh->mName, monkeyMesh });
+    entities::Mesh* cubeMesh = new entities::Mesh(*cubeMeshFile, &vkContext);
+    gMeshTable.insert({ cubeMesh->mName, cubeMesh });
     //now that all vulkan infra is created we create the game objects
-    entities::GameObject* foo = new entities::GameObject(&vkContext, "foo",
-        vkContext.vertexBuffer, vkContext.indexBuffer, 6);
+    entities::GameObject* foo = new entities::GameObject(&vkContext, "foo", monkeyMesh);
     foo->SetPosition(glm::vec3{ 1,0,0 });
-    entities::GameObject* bar = new entities::GameObject(&vkContext, "bar",
-        vkContext.vertexBuffer, vkContext.indexBuffer, 6);
+    entities::GameObject* bar = new entities::GameObject(&vkContext, "bar", cubeMesh);
     bar->SetPosition(glm::vec3{ -1,0,0 });
     gGameObjects.push_back(foo);
     gGameObjects.push_back(bar);
@@ -138,6 +158,7 @@ int main(int argc, char** argv)
     MainLoop(window);
 
     glfwDestroyWindow(window);
+
 
     //cleanup
     vkDeviceWaitIdle(vkContext.device);
@@ -150,9 +171,16 @@ int main(int argc, char** argv)
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
     DestroyCommandPool(vkContext);
-    //DestroyVertexBuffer(vkContext);
-    //DestroyIndexBuffer(vkContext);
+
+    delete foo;
+    delete bar;
     entities::GameObjectUniformBufferPool::Destroy();
+    for (auto& kv : gMeshTable) {
+        delete kv.second;
+        kv.second = nullptr;
+    }
+
+    vkContext.DestroyCameraBuffer(vkContext);
     DestroyLogicalDevice(vkContext);
     DestroySurface(vkContext);
     DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
