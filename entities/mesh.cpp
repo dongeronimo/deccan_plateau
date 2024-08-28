@@ -22,19 +22,19 @@ uint32_t _findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, 
 
 
 namespace entities {
-    Mesh::Mesh(const std::vector<Vertex>& vertexes, 
-        const std::vector<uint16_t>& indices,  VkContext* ctx, const std::string& name)
-        :mCtx(ctx), mIndexesOffset(LLONG_MAX), mVertexesOffset(LLONG_MAX), mName(name)
-    {
-        CtorStartAssertions();
-        //If this is the first mesh then we have to create the infrastructure.
-        CtorInitGlobalMeshBuffer(ctx);
-        assert(gMeshBuffer != nullptr);
-        assert(gMeshMemory != nullptr);
-        meshCounter++;
-        CtorCopyDataToGlobalBuffer(vertexes, indices, ctx);
-        
-    }
+    //Mesh::Mesh(const std::vector<Vertex>& vertexes, 
+    //    const std::vector<uint16_t>& indices,  VkContext* ctx, const std::string& name)
+    //    :mCtx(ctx), mIndexesOffset(LLONG_MAX), mVertexesOffset(LLONG_MAX), mName(name)
+    //{
+    //    CtorStartAssertions();
+    //    //If this is the first mesh then we have to create the infrastructure.
+    //    CtorInitGlobalMeshBuffer(ctx);
+    //    assert(gMeshBuffer != nullptr);
+    //    assert(gMeshMemory != nullptr);
+    //    meshCounter++;
+    //    CtorCopyDataToGlobalBuffer(vertexes, indices, ctx);
+    //    
+    //}
     Mesh::Mesh(io::MeshData& meshData, VkContext* ctx):
         mCtx(ctx), mName(meshData.name)
     {
@@ -47,6 +47,7 @@ namespace entities {
         std::vector<entities::Vertex> vertices(meshData.vertices.size());
         for (auto i = 0; i < meshData.vertices.size(); i++) {
             vertices[i].pos = meshData.vertices[i];
+            vertices[i].uv0 = meshData.uv0s[i];
             vertices[i].color = meshData.normals[i];//TODO mesh: for now using normal as color
         }
         std::vector<uint16_t> indices = meshData.indices;

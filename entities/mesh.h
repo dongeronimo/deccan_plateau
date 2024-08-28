@@ -11,14 +11,15 @@ namespace entities {
     //The vertex data structure, for a 3d vertex and it's color
     struct Vertex {
         glm::vec3 pos;
+        glm::vec2 uv0;
         glm::vec3 color;
     };
     class Mesh {
     public:
-        Mesh(const std::vector<Vertex>& vertexes,
-             const std::vector<uint16_t>& indices,
-             VkContext* ctx,
-             const std::string& name);
+        //Mesh(const std::vector<Vertex>& vertexes,
+        //     const std::vector<uint16_t>& indices,
+        //     VkContext* ctx,
+        //     const std::string& name);
         Mesh(io::MeshData& meshData, VkContext* ctx);
         ~Mesh();
         const VkContext* mCtx;

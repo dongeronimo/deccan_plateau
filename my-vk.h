@@ -78,7 +78,7 @@ struct alignas(16) CameraUniformBuffer {
 VkVertexInputBindingDescription GetBindingDescription();
 //TODO: Move it somewhere more appropriate
 //Describes the 2 attributes that we have in the shader, inPosition and inColor
-std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions();
+std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions();
 /// <summary>
 /// Kitchen sink will all vk data.
 /// </summary>

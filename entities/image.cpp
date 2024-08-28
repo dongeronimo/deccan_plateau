@@ -106,10 +106,10 @@ namespace entities {
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = totalSize;  // Total size from previous calculations
         allocInfo.memoryTypeIndex = memoryTypeIndex;
-        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &deviceMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate large device memory!");
         }
-        SET_NAME(deviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "GpuTexturesDeviceMemory");
+        SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "GpuTexturesDeviceMemory");
         //now we have to bind the vkImages to sections of the vkDeviceMemory
         currentOffset = 0;
         for (int i = 0; i < vkImages.size(); i++) {
@@ -117,7 +117,7 @@ namespace entities {
             // Align the current offset to the required alignment of this image
             currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
             // Bind the image to the memory at the aligned offset
-            if (vkBindImageMemory(ctx->device, vkImages[i], deviceMemory, currentOffset) != VK_SUCCESS) {
+            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind image memory!");
             }
             //copy to the staging buffer
@@ -187,7 +187,7 @@ namespace entities {
             vkDestroyImage(mCtx->device, kv.second.mImage, nullptr);
             vkDestroyImageView(mCtx->device, kv.second.mImageView, nullptr);
         }
-        vkFreeMemory(mCtx->device, deviceMemory, nullptr);
+        vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
         mImageTable.clear();
     }
     VkImage GpuTextureManager::GetImage(const std::string& name) const
