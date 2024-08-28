@@ -2,6 +2,7 @@
 #include "my-vk.h"
 #include <stdexcept>
 #include "object_namer.h"
+#include "commandBufferUtils.h"
 #define _256mb 256 * 1024 * 1024
 static VkBuffer gMeshBuffer = VK_NULL_HANDLE;
 static VkDeviceMemory gMeshMemory = VK_NULL_HANDLE;
@@ -18,53 +19,8 @@ uint32_t _findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, 
     }
     throw std::runtime_error("failed to find suitable memory type!");
 }
-VkCommandBuffer CreateCommandBuffer(VkCommandPool commandPool, 
-    VkDevice device,
-    const std::string& name) {
-    //a temporary command buffer for copy
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
-    allocInfo.commandBufferCount = 1;
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-    SET_NAME(commandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER, name.c_str());
-    return commandBuffer;
-}
-void BeginRecording(VkCommandBuffer cmd) {
-    //begin recording commands
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; //this command buffer will be used only once
-    vkBeginCommandBuffer(cmd, &beginInfo);
-}
-void Copy(VkDeviceSize srcOffset, VkDeviceSize dstOffset,VkDeviceSize size,
-    VkCommandBuffer cmd, VkBuffer src, VkBuffer dst) {
-    //copy command
-    VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = srcOffset; // Optional
-    copyRegion.dstOffset = dstOffset; // Optional
-    copyRegion.size = size;
-    vkCmdCopyBuffer(cmd, src, dst, 1, &copyRegion);
 
-}
-void Finish(VkCommandBuffer cmd, VkQueue queue, VkDevice device,
-    VkCommandPool commandPool) {
-    //end the recording
-    vkEndCommandBuffer(cmd);
-    //submit the command
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmd;
 
-    vkQueueSubmit(queue, 
-        1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(queue);//cpu waits until copy is done
-    //free the command buffer
-    vkFreeCommandBuffers(device, commandPool, 1, &cmd);
-}
 namespace entities {
     Mesh::Mesh(const std::vector<Vertex>& vertexes, 
         const std::vector<uint16_t>& indices,  VkContext* ctx, const std::string& name)
@@ -191,15 +147,15 @@ namespace entities {
         //3)Copy the vertex and index buffer to the main buffer, increase the cursor
         VkCommandBuffer vbCopyCommandBuffer = CreateCommandBuffer(ctx->commandPool,
             ctx->device, "vertex buffer copy command buffer");
-        BeginRecording(vbCopyCommandBuffer);
-        Copy(0, gMemoryCursor, vertexBufferSize, vbCopyCommandBuffer, vertexStagingBuffer, gMeshBuffer);
+        BeginRecordingCommands(vbCopyCommandBuffer);
+        CopyBuffer(0, gMemoryCursor, vertexBufferSize, vbCopyCommandBuffer, vertexStagingBuffer, gMeshBuffer);
         mVertexesOffset = gMemoryCursor;
         gMemoryCursor += vertexBufferSize;
-        Copy(0, gMemoryCursor, indexBufferSize, vbCopyCommandBuffer, indexStagingBuffer, gMeshBuffer);
+        CopyBuffer(0, gMemoryCursor, indexBufferSize, vbCopyCommandBuffer, indexStagingBuffer, gMeshBuffer);
         mIndexesOffset = gMemoryCursor;
         gMemoryCursor += indexBufferSize;
         //4)Finish execution
-        Finish(vbCopyCommandBuffer, ctx->graphicsQueue, ctx->device, ctx->commandPool);
+        SubmitAndFinishCommands(vbCopyCommandBuffer, ctx->graphicsQueue, ctx->device, ctx->commandPool);
         mNumberOfIndices = indices.size();
 
         vkDestroyBuffer(ctx->device, vertexStagingBuffer, nullptr);

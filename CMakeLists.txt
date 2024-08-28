@@ -58,6 +58,8 @@ target_link_libraries(assimp  zlibstatic)
 
 # Add the executable
 add_executable(deccan-plateau-demo 
+    commandBufferUtils.cpp
+    commandBufferUtils.h
     deccan-plateau-demo.cpp 
     deccan-plateau-demo.h 
     my-vk.cpp 
@@ -75,11 +77,17 @@ add_executable(deccan-plateau-demo
     entities/game-object.h
     entities/mesh.cpp
     entities/mesh.h
+    entities/image.cpp
+    entities/image.h
     io/asset-paths.cpp
     io/asset-paths.h
     io/mesh-data.h
     io/mesh-load.cpp
     io/mesh-load.h
+    io/stb_image.h
+    io/image-load.h
+    io/image-load.cpp
+
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers

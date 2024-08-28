@@ -11,19 +11,9 @@
 #include "entities/game-object.h"
 #include <chrono>
 #include "entities/mesh.h"
+#include "entities/image.h"
 #include "io/mesh-load.h"
-//the mesh
-const std::vector<entities::Vertex> vertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}
-};
-const std::vector<uint16_t> indices = {
-    0,1,2,
-    2,3,0
-};
-
+#include "io/image-load.h"
 std::map<std::string, entities::Mesh*> gMeshTable;
 
 VkContext vkContext{};
@@ -141,7 +131,17 @@ int main(int argc, char** argv)
     CreateDescriptorSetsForCamera(vkContext);
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
+    //create the textures
+    io::ImageData* brickImageData = io::LoadImage("brick.png");
+    brickImageData->name = "brick.png";
+    io::ImageData* blackBrickImageData = io::LoadImage("blackBrick.png");
+    blackBrickImageData->name = "blackBrick.png";
+    io::ImageData* floor01ImageData = io::LoadImage("floor01.jpg");
+    floor01ImageData->name = "floor01.jpg";
 
+    std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData};
+    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
+        &vkContext, gpuTextures);
     //create the mesh
     entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
     gMeshTable.insert({ monkeyMesh->mName, monkeyMesh });
@@ -159,7 +159,8 @@ int main(int argc, char** argv)
 
     glfwDestroyWindow(window);
 
-
+    delete brickImageData;
+    delete gpuTextureManager;
     //cleanup
     vkDeviceWaitIdle(vkContext.device);
     DestroyDescriptorSets(vkContext);
