@@ -7,8 +7,10 @@
 #include <map>
 #include <array>
 #include <glm/glm.hpp>
+
 namespace entities {
     class GameObject;
+    class GpuTextureManager;
 }
 /// <summary>
 /// Stores the pointers to custom allocators for VK. Custom allocators are not
@@ -78,7 +80,7 @@ struct alignas(16) CameraUniformBuffer {
 VkVertexInputBindingDescription GetBindingDescription();
 //TODO: Move it somewhere more appropriate
 //Describes the 2 attributes that we have in the shader, inPosition and inColor
-std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions();
+std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions();
 /// <summary>
 /// Kitchen sink will all vk data.
 /// </summary>
@@ -195,18 +197,12 @@ struct VkContext
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
-#pragma region mesh
-    //TODO: create a single, big ass VkDeviceMemory and do linear allocation of vertex and index buffers
-    //TODO: merge the vertex buffer memory and the index buffer memory into a single memory.
-    VkBuffer vertexBuffer; //TODO:  move to some kind of mesh object
-    VkDeviceMemory vertexBufferMemory; //TODO: move to some kind of mesh object
-    VkBuffer indexBuffer; //TODO: move this to some kind of mesh object
-    VkDeviceMemory indexBufferMemory; //TODO: move this to some kind of mesh object
-#pragma endregion
 #pragma region hello_pipeline
     void DestroyCameraBuffer(VkContext& ctx);
     std::vector<VkDescriptorSet> helloCameraDescriptorSets;
-    VkDescriptorSetLayout helloCameraDescriptorSetLayout;//TODO: this info is coupled to the shader and to the pipeline so it should be part of the material
+    std::vector<VkDescriptorSet> helloSamplerDescriptorSets;
+    VkDescriptorSetLayout helloCameraDescriptorSetLayout;
+    VkDescriptorSetLayout helloSamplerDescriptorSetLayout;
     //One buffer for each frame in flight
     std::vector<VkBuffer> helloCameraUniformBuffer;
     std::vector<VkDeviceMemory> helloCameraUniformBufferMemory;
@@ -218,15 +214,13 @@ struct VkContext
     /// <summary>
     /// A descriptor pool for the camera
     /// </summary>
-    VkDescriptorPool helloCameraDescriptorPool;
-    /// <summary>
-    /// Other for the objects
-    /// </summary>
-    //VkDescriptorPool objectDescriptorPool;
-#pragma endregion
-    //VkDescriptorPool descriptorPool;
+    VkDescriptorPool helloCameraDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorPool helloSamplerDescriptorPool = VK_NULL_HANDLE;
+    VkSampler helloSampler = VK_NULL_HANDLE;
 
 };
+
+void CreateHelloSampler(VkContext& ctx);
 
 void DestroyImageViews(VkContext& ctx);
 /// <summary>
@@ -287,7 +281,7 @@ void DestroyRenderPass(VkContext& ctx);
 
 void DestroyPipeline(VkContext& ctx);
 
-void CreateFramebuffers(VkContext& ctx);
+void CreateFramebuffers(VkContext& ctx, VkImageView depthImageViews);
 
 void DestroyFramebuffers(VkContext& ctx);
 
@@ -342,9 +336,9 @@ void CreateUniformBuffersForCamera(VkContext& vkContext);
 /// </summary>
 /// <param name="ctx"></param>
 void CreateDescriptorSetsForCamera(VkContext& ctx);
-
+void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager*, const std::string& name);
 void CreateDescriptorSetLayoutForObject(VkContext& ctx);
-
+void CreateDescriptorSetLayoutForSampler(VkContext& ctx);
 /// <summary>
 /// Each object will have it's own buffer for it's uniforms.
 /// </summary>
@@ -371,3 +365,4 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex);
 void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
 void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
+

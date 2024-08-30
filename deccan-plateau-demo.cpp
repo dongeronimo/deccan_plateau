@@ -11,19 +11,10 @@
 #include "entities/game-object.h"
 #include <chrono>
 #include "entities/mesh.h"
+#include "entities/image.h"
 #include "io/mesh-load.h"
-//the mesh
-const std::vector<entities::Vertex> vertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}}
-};
-const std::vector<uint16_t> indices = {
-    0,1,2,
-    2,3,0
-};
-
+#include "io/image-load.h"
+#include "concatenate.h"
 std::map<std::string, entities::Mesh*> gMeshTable;
 
 VkContext vkContext{};
@@ -119,28 +110,56 @@ int main(int argc, char** argv)
     CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
     //it's best to create the namer as soon as possible.
     vk::ObjectNamer::Instance().Init(vkContext.device);
+    CreateCommandPool(vkContext);
 
-    
+
+
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
-    CreateRenderPasses(vkContext);
+
     //the hello pipeline needs these descriptors.
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
+    CreateDescriptorSetLayoutForSampler(vkContext);
+    //create the textures
+    io::ImageData* brickImageData = io::LoadImage("brick.png");
+    brickImageData->name = "brick.png";
+    io::ImageData* blackBrickImageData = io::LoadImage("blackBrick.png");
+    blackBrickImageData->name = "blackBrick.png";
+    io::ImageData* floor01ImageData = io::LoadImage("floor01.jpg");
+    floor01ImageData->name = "floor01.jpg";
+    std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData };
+    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
+        &vkContext, gpuTextures);
+    //create the depth buffers
+    std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
+    depthBuffersForMainRenderPass.push_back({
+        WIDTH, HEIGHT, "mainRenderPassDepthBuffer"
+        });
+    
+    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
+        &vkContext, depthBuffersForMainRenderPass
+    );
+    //render pass depends upon the depth buffer
+    CreateRenderPasses(vkContext);
+    CreateHelloSampler(vkContext);
     //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
     //before the uniform buffer pool is created
     entities::GameObjectUniformBufferPool::Initialize(&vkContext);
 
     CreateGraphicsPipeline(vkContext);
-    CreateFramebuffers(vkContext);
-    CreateCommandPool(vkContext);
+
+    CreateFramebuffers(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
+
 
     CreateUniformBuffersForCamera(vkContext);
     //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
     CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
     CreateDescriptorSetsForCamera(vkContext);
+    CreateDescriptorSetsForSampler(vkContext, gpuTextureManager, "floor01.jpg");
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
+
 
     //create the mesh
     entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
@@ -159,7 +178,8 @@ int main(int argc, char** argv)
 
     glfwDestroyWindow(window);
 
-
+    delete brickImageData;
+    delete gpuTextureManager;
     //cleanup
     vkDeviceWaitIdle(vkContext.device);
     DestroyDescriptorSets(vkContext);

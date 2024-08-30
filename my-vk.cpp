@@ -15,6 +15,7 @@
 #include "entities/game-object.h"
 #include "io/asset-paths.h"
 #include "entities/mesh.h"
+#include "entities/image.h"
 #include "concatenate.h"
 VkApplicationInfo GetAppInfo() {
     VkApplicationInfo appInfo{};
@@ -36,20 +37,51 @@ VkVertexInputBindingDescription GetBindingDescription()
     return bindingDescription;
 }
 //TODO: Move it somewhere more appropriate
-std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions()
+std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
 {
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
     //inPosition
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(entities::Vertex, pos);
-    //inColor
+    //inUV0
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(entities::Vertex, color);
+    attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[1].offset = offsetof(entities::Vertex, uv0);
+    //inColor
+    attributeDescriptions[2].binding = 0;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[2].offset = offsetof(entities::Vertex, color);
     return attributeDescriptions;
+}
+
+void CreateHelloSampler(VkContext& ctx)
+{
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(ctx.physicalDevice, &properties);
+    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
+    if (vkCreateSampler(ctx.device, &samplerInfo, nullptr, &ctx.helloSampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+    SET_NAME(ctx.helloSampler, VK_OBJECT_TYPE_SAMPLER, "HelloPipelineSampler");
 }
 
 void DestroyImageViews(VkContext& ctx) {
@@ -121,6 +153,7 @@ void SelectPhysicalDevice(VkContext& ctx)
         vkGetPhysicalDeviceProperties(device, &properties);
         VkPhysicalDeviceFeatures features = {};
         vkGetPhysicalDeviceFeatures(device, &features);
+        features.samplerAnisotropy = VK_TRUE;
         int score = 0;
         if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
             score += 1000;
@@ -204,8 +237,9 @@ void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.queueCreateInfoCount = static_cast<uint32_t>( queueCreateInfos.size() );
-    //for now we won't use features
-    VkPhysicalDeviceFeatures deviceFeatures{};
+    VkPhysicalDeviceFeatures deviceFeatures = {};
+    vkGetPhysicalDeviceFeatures(ctx.physicalDevice, &deviceFeatures);
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
     createInfo.pEnabledFeatures = &deviceFeatures;
     //The logical device extensions that i want
     const std::vector<const char*> deviceExtensions = {
@@ -448,7 +482,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     rasterizer.rasterizerDiscardEnable = VK_FALSE; //if true the geometry will never pass thru the rasterizer stage
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.lineWidth = 1.0f;
     //multisampling TODO: Disabled for now
@@ -470,18 +504,34 @@ void CreateGraphicsPipeline(VkContext& ctx)
     //pipeline layout, to pass data to the shaders, sends nothing for now
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts = {
-        ctx.helloCameraDescriptorSetLayout,
-        ctx.helloObjectDescriptorSetLayout
+    std::array<VkDescriptorSetLayout, 3> descriptorSetLayouts = {
+        ctx.helloCameraDescriptorSetLayout,//set 0
+        ctx.helloObjectDescriptorSetLayout,//set 1
+        ctx.helloSamplerDescriptorSetLayout //set 2
     };
     pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()); 
     pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data(); 
+    //we use no push constants for now
     pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
     pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
     if (vkCreatePipelineLayout(ctx.device, &pipelineLayoutInfo, 
         nullptr, &ctx.helloPipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
+    SET_NAME(ctx.helloPipelineLayout, 
+        VK_OBJECT_TYPE_PIPELINE_LAYOUT, "HelloPipelineLayout");
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.minDepthBounds = 0.0f; // Optional
+    depthStencil.maxDepthBounds = 1.0f; // Optional
+    depthStencil.stencilTestEnable = VK_FALSE;
+    depthStencil.front = {}; // Optional
+    depthStencil.back = {}; // Optional
     //the actual pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -493,7 +543,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = nullptr; // Optional
+    pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     //link the pipeline layout to the pipeline
@@ -507,6 +557,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
         nullptr, &ctx.graphicsPipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
+    SET_NAME(ctx.graphicsPipeline, VK_OBJECT_TYPE_PIPELINE, "HelloPipeline");
     vkDestroyShaderModule(ctx.device, ctx.shaderModules["hello_vertex"], nullptr);
     vkDestroyShaderModule(ctx.device, ctx.shaderModules["hello_fragment"], nullptr);
 }
@@ -530,6 +581,18 @@ void DestroyPipelineLayout(VkContext& ctx)
 
 void CreateRenderPasses(VkContext& ctx)
 {
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     //the image that'll hold the result
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = ctx.swapChainImageFormat;
@@ -549,11 +612,15 @@ void CreateRenderPasses(VkContext& ctx)
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
     //the actual render pass, composed of image attachments and subpasses
+    std::array<VkAttachmentDescription, 2> attachments = { 
+        colorAttachment, 
+        depthAttachment };
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;//the color attachments
+    renderPassInfo.attachmentCount = attachments.size();
+    renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
     //the render pass depends upon the previous render pass to run
@@ -561,16 +628,17 @@ void CreateRenderPasses(VkContext& ctx)
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
     //wait until the image is attached
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
     if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.renderPass) != VK_SUCCESS) {
         throw std::runtime_error("failed to create render pass!");
     }
+    SET_NAME(ctx.renderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
 }
 
 void DestroyRenderPass(VkContext& ctx)
@@ -583,20 +651,21 @@ void DestroyPipeline(VkContext& ctx)
     vkDestroyPipeline(ctx.device, ctx.graphicsPipeline, nullptr);
 }
 
-void CreateFramebuffers(VkContext& ctx)
+void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
 {
     //one framebuffer for each image. ImageViews are the interface to the underlying images
     ctx.swapChainFramebuffers.resize(ctx.swapChainImageViews.size());
     for (size_t i = 0; i < ctx.swapChainImageViews.size(); i++) {
-        VkImageView attachments[] = {
-            ctx.swapChainImageViews[i]
+        std::vector<VkImageView> attachments = {
+            ctx.swapChainImageViews[i],
+            depthImageView
         };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.renderPass = ctx.renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.attachmentCount = attachments.size();
+        framebufferInfo.pAttachments = attachments.data();
         framebufferInfo.width = ctx.swapChainExtent.width;
         framebufferInfo.height = ctx.swapChainExtent.height;
         framebufferInfo.layers = 1;
@@ -605,6 +674,8 @@ void CreateFramebuffers(VkContext& ctx)
             &ctx.swapChainFramebuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create framebuffer!");
         }
+        auto _name = Concatenate("swapchain framebuffer ", i);
+        SET_NAME(ctx.swapChainFramebuffers[i], VK_OBJECT_TYPE_FRAMEBUFFER, _name.c_str());
     }
 }
 
@@ -624,7 +695,7 @@ void CreateCommandPool(VkContext& ctx)
     if (vkCreateCommandPool(ctx.device, &poolInfo, nullptr, &ctx.commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }
-
+    SET_NAME(ctx.commandPool, VK_OBJECT_TYPE_COMMAND_POOL, "MainCommandPool");
 }
 
 void DestroyCommandPool(VkContext& ctx)
@@ -690,9 +761,11 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
     renderPassInfo.renderArea.offset = { 0, 0 };
     renderPassInfo.renderArea.extent = ctx.swapChainExtent;
-    VkClearValue clearColor = { {{ ctx.clearColor[0], ctx.clearColor[1], ctx.clearColor[2], ctx.clearColor[3]}} };
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+    clearValues[1].depthStencil = { 1.0f, 0 };
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
     vkCmdBeginRenderPass(ctx.commandBuffers[ctx.currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     //bind the pipeline
     vkCmdBindPipeline(ctx.commandBuffers[ctx.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.graphicsPipeline);
@@ -811,6 +884,17 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
         1,
         &dynamicOffset
     );
+    //bind the sampler
+    vkCmdBindDescriptorSets(
+        cmdBuffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        ctx.helloPipelineLayout,
+        2, //third set
+        1,
+        &ctx.helloSamplerDescriptorSets[ctx.currentFrame],
+        0,
+        nullptr
+    );
     //Draw command
     vkCmdDrawIndexed(cmdBuffer,
         static_cast<uint32_t>(go->mMesh->NumberOfIndices()), 
@@ -855,6 +939,8 @@ void DestroySyncObjects(VkContext& ctx)
 
 void RecreateSwapChain(VkContext& ctx)
 {
+    assert(false);//broken
+    //TODO: depthBufferManager need to recreate it's depth buffers
     //handles minimization
     int w = 0, h = 0;
     glfwGetFramebufferSize(ctx.window, &w, &h);
@@ -872,7 +958,7 @@ void RecreateSwapChain(VkContext& ctx)
     //recreation
     CreateSwapChain(ctx);
     CreateImageViewForSwapChain(ctx);
-    CreateFramebuffers(ctx);
+    //CreateFramebuffers(ctx);
 }
 
 
@@ -957,14 +1043,31 @@ void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkCon
     //free the command buffer
     vkFreeCommandBuffers(ctx.device, ctx.commandPool, 1, &commandBuffer);
 }
-
+void CreateDescriptorSetLayoutForSampler(VkContext& ctx) {
+    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+    samplerLayoutBinding.binding = 0;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerLayoutBinding.pImmutableSamplers = nullptr; // Optional
+    VkDescriptorSetLayoutCreateInfo samplerLayoutInfo{};
+    samplerLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    samplerLayoutInfo.bindingCount = 1;
+    samplerLayoutInfo.pBindings = &samplerLayoutBinding;
+    if (vkCreateDescriptorSetLayout(ctx.device, &samplerLayoutInfo,
+        nullptr, &ctx.helloSamplerDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout for object");
+    }
+    SET_NAME(ctx.helloObjectDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+        "SamplerDescriptorSetLayout");
+}
 void CreateDescriptorSetLayoutForObject(VkContext& ctx)
 {
     VkDescriptorSetLayoutBinding objectLayoutBinding{};
     objectLayoutBinding.binding = 0;
     objectLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     objectLayoutBinding.descriptorCount = 1;
-    objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
     objectLayoutBinding.pImmutableSamplers = nullptr; // Optional
 
     VkDescriptorSetLayoutCreateInfo objectLayoutInfo{};
@@ -976,6 +1079,8 @@ void CreateDescriptorSetLayoutForObject(VkContext& ctx)
         nullptr, &ctx.helloObjectDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout for object");
     }
+    SET_NAME(ctx.helloObjectDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+        "ObjectsDescriptorSetLayout");
 }
 
 void CreateDescriptorSetLayoutForCamera(VkContext& ctx)
@@ -1048,6 +1153,22 @@ void CreateDescriptorPool(VkContext& ctx)
         throw std::runtime_error("Failed to create camera descriptor pool!");
     }
     SET_NAME(ctx.helloCameraDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloCameraDescriptorPool");
+    //////CREATES THE DESCRIPTOR POOL FOR SAMPLERS//////
+    VkDescriptorPoolSize samplerPoolSize{};
+    samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerPoolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+
+    VkDescriptorPoolCreateInfo samplerPoolInfo{};
+    samplerPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    samplerPoolInfo.poolSizeCount = 1;
+    samplerPoolInfo.pPoolSizes = &samplerPoolSize;
+    samplerPoolInfo.maxSets = 1 * MAX_FRAMES_IN_FLIGHT; // Only one sampler. NEVER FORGET TO MULTIPLY BY MAX_FRAMES_IN_
+
+    if (vkCreateDescriptorPool(ctx.device, &samplerPoolInfo, nullptr, &ctx.helloSamplerDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create sampler descriptor pool!");
+    }
+    SET_NAME(ctx.helloSamplerDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloSamplerDescriptorPool");
+
 }
 
 void CreateDescriptorSetsForCamera(VkContext& ctx)
@@ -1082,6 +1203,42 @@ void CreateDescriptorSetsForCamera(VkContext& ctx)
         vkUpdateDescriptorSets(ctx.device, 1, &descriptorWrite, 0, nullptr);
     }
 
+}
+
+void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager* manager, const std::string& name)
+{
+    assert(ctx.helloSamplerDescriptorPool != VK_NULL_HANDLE);
+    //one layout for each frame in flight, create the vector filling with the layout that i alredy have
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+        ctx.helloSamplerDescriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = ctx.helloSamplerDescriptorPool;
+    //one descriptor set for each frame in flight
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+    ctx.helloSamplerDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(ctx.device, &allocInfo, 
+        ctx.helloSamplerDescriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets for SAMPLER!");
+    }
+    VkImageView view = manager->GetImageView(name);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = view;
+        imageInfo.sampler = ctx.helloSampler;
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = ctx.helloSamplerDescriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+        vkUpdateDescriptorSets(ctx.device, 1, &descriptorWrite, 0, nullptr);
+    }
 }
 
 void VkContext::DestroyCameraBuffer(VkContext& ctx)
