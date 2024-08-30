@@ -15,6 +15,7 @@
 #include "entities/game-object.h"
 #include "io/asset-paths.h"
 #include "entities/mesh.h"
+#include "entities/image.h"
 #include "concatenate.h"
 VkApplicationInfo GetAppInfo() {
     VkApplicationInfo appInfo{};
@@ -55,6 +56,32 @@ std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
     attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[2].offset = offsetof(entities::Vertex, color);
     return attributeDescriptions;
+}
+
+void CreateHelloSampler(VkContext& ctx)
+{
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.anisotropyEnable = VK_TRUE;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(ctx.physicalDevice, &properties);
+    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
+    if (vkCreateSampler(ctx.device, &samplerInfo, nullptr, &ctx.helloSampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture sampler!");
+    }
+    SET_NAME(ctx.helloSampler, VK_OBJECT_TYPE_SAMPLER, "HelloPipelineSampler");
 }
 
 void DestroyImageViews(VkContext& ctx) {
@@ -126,6 +153,7 @@ void SelectPhysicalDevice(VkContext& ctx)
         vkGetPhysicalDeviceProperties(device, &properties);
         VkPhysicalDeviceFeatures features = {};
         vkGetPhysicalDeviceFeatures(device, &features);
+        features.samplerAnisotropy = VK_TRUE;
         int score = 0;
         if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
             score += 1000;
@@ -209,8 +237,9 @@ void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.queueCreateInfoCount = static_cast<uint32_t>( queueCreateInfos.size() );
-    //for now we won't use features
-    VkPhysicalDeviceFeatures deviceFeatures{};
+    VkPhysicalDeviceFeatures deviceFeatures = {};
+    vkGetPhysicalDeviceFeatures(ctx.physicalDevice, &deviceFeatures);
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
     createInfo.pEnabledFeatures = &deviceFeatures;
     //The logical device extensions that i want
     const std::vector<const char*> deviceExtensions = {
@@ -475,18 +504,22 @@ void CreateGraphicsPipeline(VkContext& ctx)
     //pipeline layout, to pass data to the shaders, sends nothing for now
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts = {
-        ctx.helloCameraDescriptorSetLayout,
-        ctx.helloObjectDescriptorSetLayout
+    std::array<VkDescriptorSetLayout, 3> descriptorSetLayouts = {
+        ctx.helloCameraDescriptorSetLayout,//set 0
+        ctx.helloObjectDescriptorSetLayout,//set 1
+        ctx.helloSamplerDescriptorSetLayout //set 2
     };
     pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()); 
     pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data(); 
+    //we use no push constants for now
     pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
     pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
     if (vkCreatePipelineLayout(ctx.device, &pipelineLayoutInfo, 
         nullptr, &ctx.helloPipelineLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
+    SET_NAME(ctx.helloPipelineLayout, 
+        VK_OBJECT_TYPE_PIPELINE_LAYOUT, "HelloPipelineLayout");
     //the actual pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -512,6 +545,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
         nullptr, &ctx.graphicsPipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
+    SET_NAME(ctx.graphicsPipeline, VK_OBJECT_TYPE_PIPELINE, "HelloPipeline");
     vkDestroyShaderModule(ctx.device, ctx.shaderModules["hello_vertex"], nullptr);
     vkDestroyShaderModule(ctx.device, ctx.shaderModules["hello_fragment"], nullptr);
 }
@@ -629,7 +663,7 @@ void CreateCommandPool(VkContext& ctx)
     if (vkCreateCommandPool(ctx.device, &poolInfo, nullptr, &ctx.commandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }
-
+    SET_NAME(ctx.commandPool, VK_OBJECT_TYPE_COMMAND_POOL, "MainCommandPool");
 }
 
 void DestroyCommandPool(VkContext& ctx)
@@ -816,6 +850,17 @@ void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkCon
         1,
         &dynamicOffset
     );
+    //bind the sampler
+    vkCmdBindDescriptorSets(
+        cmdBuffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        ctx.helloPipelineLayout,
+        2, //third set
+        1,
+        &ctx.helloSamplerDescriptorSets[ctx.currentFrame],
+        0,
+        nullptr
+    );
     //Draw command
     vkCmdDrawIndexed(cmdBuffer,
         static_cast<uint32_t>(go->mMesh->NumberOfIndices()), 
@@ -962,14 +1007,31 @@ void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkCon
     //free the command buffer
     vkFreeCommandBuffers(ctx.device, ctx.commandPool, 1, &commandBuffer);
 }
-
+void CreateDescriptorSetLayoutForSampler(VkContext& ctx) {
+    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+    samplerLayoutBinding.binding = 0;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    samplerLayoutBinding.pImmutableSamplers = nullptr; // Optional
+    VkDescriptorSetLayoutCreateInfo samplerLayoutInfo{};
+    samplerLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    samplerLayoutInfo.bindingCount = 1;
+    samplerLayoutInfo.pBindings = &samplerLayoutBinding;
+    if (vkCreateDescriptorSetLayout(ctx.device, &samplerLayoutInfo,
+        nullptr, &ctx.helloSamplerDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout for object");
+    }
+    SET_NAME(ctx.helloObjectDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+        "SamplerDescriptorSetLayout");
+}
 void CreateDescriptorSetLayoutForObject(VkContext& ctx)
 {
     VkDescriptorSetLayoutBinding objectLayoutBinding{};
     objectLayoutBinding.binding = 0;
     objectLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     objectLayoutBinding.descriptorCount = 1;
-    objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    objectLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
     objectLayoutBinding.pImmutableSamplers = nullptr; // Optional
 
     VkDescriptorSetLayoutCreateInfo objectLayoutInfo{};
@@ -981,6 +1043,8 @@ void CreateDescriptorSetLayoutForObject(VkContext& ctx)
         nullptr, &ctx.helloObjectDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout for object");
     }
+    SET_NAME(ctx.helloObjectDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
+        "ObjectsDescriptorSetLayout");
 }
 
 void CreateDescriptorSetLayoutForCamera(VkContext& ctx)
@@ -1053,6 +1117,22 @@ void CreateDescriptorPool(VkContext& ctx)
         throw std::runtime_error("Failed to create camera descriptor pool!");
     }
     SET_NAME(ctx.helloCameraDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloCameraDescriptorPool");
+    //////CREATES THE DESCRIPTOR POOL FOR SAMPLERS//////
+    VkDescriptorPoolSize samplerPoolSize{};
+    samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerPoolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+
+    VkDescriptorPoolCreateInfo samplerPoolInfo{};
+    samplerPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    samplerPoolInfo.poolSizeCount = 1;
+    samplerPoolInfo.pPoolSizes = &samplerPoolSize;
+    samplerPoolInfo.maxSets = 1 * MAX_FRAMES_IN_FLIGHT; // Only one sampler. NEVER FORGET TO MULTIPLY BY MAX_FRAMES_IN_
+
+    if (vkCreateDescriptorPool(ctx.device, &samplerPoolInfo, nullptr, &ctx.helloSamplerDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create sampler descriptor pool!");
+    }
+    SET_NAME(ctx.helloSamplerDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloSamplerDescriptorPool");
+
 }
 
 void CreateDescriptorSetsForCamera(VkContext& ctx)
@@ -1087,6 +1167,42 @@ void CreateDescriptorSetsForCamera(VkContext& ctx)
         vkUpdateDescriptorSets(ctx.device, 1, &descriptorWrite, 0, nullptr);
     }
 
+}
+
+void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager* manager, const std::string& name)
+{
+    assert(ctx.helloSamplerDescriptorPool != VK_NULL_HANDLE);
+    //one layout for each frame in flight, create the vector filling with the layout that i alredy have
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+        ctx.helloSamplerDescriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = ctx.helloSamplerDescriptorPool;
+    //one descriptor set for each frame in flight
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+    ctx.helloSamplerDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(ctx.device, &allocInfo, 
+        ctx.helloSamplerDescriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets for SAMPLER!");
+    }
+    VkImageView view = manager->GetImageView(name);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = view;
+        imageInfo.sampler = ctx.helloSampler;
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = ctx.helloSamplerDescriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+        vkUpdateDescriptorSets(ctx.device, 1, &descriptorWrite, 0, nullptr);
+    }
 }
 
 void VkContext::DestroyCameraBuffer(VkContext& ctx)

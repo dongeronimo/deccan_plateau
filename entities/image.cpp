@@ -140,15 +140,15 @@ namespace entities {
             TransitionImageLayout(vkImages[i], VK_FORMAT_R8G8B8A8_SRGB,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 ctx->commandPool, ctx->device, ctx->graphicsQueue);
-            
-            //transition it from destination of copy to shader-only.
-            TransitionImageLayout(vkImages[i], VK_FORMAT_R8G8B8A8_SRGB,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                ctx->commandPool, ctx->device, ctx->graphicsQueue);
             //now that the image can be the dest of a copy, do it
             CopyBufferToImage(textureStagingBuffer, vkImages[i],
                 static_cast<uint32_t>(images[i]->w), static_cast<uint32_t>(images[i]->h),
                 ctx->commandPool, ctx->device, ctx->graphicsQueue);
+            //transition it from destination of copy to shader-only.
+            TransitionImageLayout(vkImages[i], VK_FORMAT_R8G8B8A8_SRGB,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                ctx->commandPool, ctx->device, ctx->graphicsQueue);
+
 
             //create the view
             VkImageViewCreateInfo textureViewInfo{};

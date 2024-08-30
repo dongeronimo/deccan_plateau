@@ -1,8 +1,10 @@
 #include "commandBufferUtils.h"
 #include "object_namer.h"
+#include <cassert>
 VkCommandBuffer CreateCommandBuffer(VkCommandPool commandPool,
     VkDevice device,
     const std::string& name) {
+    assert(commandPool != VK_NULL_HANDLE);
     //a temporary command buffer for copy
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

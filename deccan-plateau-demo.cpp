@@ -109,28 +109,17 @@ int main(int argc, char** argv)
     CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
     //it's best to create the namer as soon as possible.
     vk::ObjectNamer::Instance().Init(vkContext.device);
+    CreateCommandPool(vkContext);
 
-    
+
+
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
     CreateRenderPasses(vkContext);
     //the hello pipeline needs these descriptors.
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
-    //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
-    //before the uniform buffer pool is created
-    entities::GameObjectUniformBufferPool::Initialize(&vkContext);
-
-    CreateGraphicsPipeline(vkContext);
-    CreateFramebuffers(vkContext);
-    CreateCommandPool(vkContext);
-
-    CreateUniformBuffersForCamera(vkContext);
-    //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
-    CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
-    CreateDescriptorSetsForCamera(vkContext);
-    CreateCommandBuffer(vkContext);
-    CreateSyncObjects(vkContext);
+    CreateDescriptorSetLayoutForSampler(vkContext);
     //create the textures
     io::ImageData* brickImageData = io::LoadImage("brick.png");
     brickImageData->name = "brick.png";
@@ -138,10 +127,27 @@ int main(int argc, char** argv)
     blackBrickImageData->name = "blackBrick.png";
     io::ImageData* floor01ImageData = io::LoadImage("floor01.jpg");
     floor01ImageData->name = "floor01.jpg";
-
-    std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData};
+    std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData };
     entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
         &vkContext, gpuTextures);
+    CreateHelloSampler(vkContext);
+    //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
+    //before the uniform buffer pool is created
+    entities::GameObjectUniformBufferPool::Initialize(&vkContext);
+
+    CreateGraphicsPipeline(vkContext);
+    CreateFramebuffers(vkContext);
+
+
+    CreateUniformBuffersForCamera(vkContext);
+    //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
+    CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
+    CreateDescriptorSetsForCamera(vkContext);
+    CreateDescriptorSetsForSampler(vkContext, gpuTextureManager, "floor01.jpg");
+    CreateCommandBuffer(vkContext);
+    CreateSyncObjects(vkContext);
+
+
     //create the mesh
     entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
     gMeshTable.insert({ monkeyMesh->mName, monkeyMesh });
