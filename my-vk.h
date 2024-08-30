@@ -281,7 +281,7 @@ void DestroyRenderPass(VkContext& ctx);
 
 void DestroyPipeline(VkContext& ctx);
 
-void CreateFramebuffers(VkContext& ctx);
+void CreateFramebuffers(VkContext& ctx, VkImageView depthImageViews);
 
 void DestroyFramebuffers(VkContext& ctx);
 

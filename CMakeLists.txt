@@ -103,6 +103,7 @@ target_compile_definitions(deccan-plateau-demo PRIVATE
     MAX_FRAMES_IN_FLIGHT=2
     GLM_FORCE_RADIANS #GLM must use radians everywhere
     GLM_FORCE_DEFAULT_ALIGNED_GENTYPES #Force glm vector and matrix types to be aligned
+    GLM_FORCE_DEPTH_ZERO_TO_ONE
 )
 target_compile_features(deccan-plateau-demo PRIVATE cxx_std_17)
 

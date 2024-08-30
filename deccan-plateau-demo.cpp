@@ -14,6 +14,7 @@
 #include "entities/image.h"
 #include "io/mesh-load.h"
 #include "io/image-load.h"
+#include "concatenate.h"
 std::map<std::string, entities::Mesh*> gMeshTable;
 
 VkContext vkContext{};
@@ -115,7 +116,7 @@ int main(int argc, char** argv)
 
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
-    CreateRenderPasses(vkContext);
+
     //the hello pipeline needs these descriptors.
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
@@ -130,13 +131,25 @@ int main(int argc, char** argv)
     std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData };
     entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
         &vkContext, gpuTextures);
+    //create the depth buffers
+    std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
+    depthBuffersForMainRenderPass.push_back({
+        WIDTH, HEIGHT, "mainRenderPassDepthBuffer"
+        });
+    
+    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
+        &vkContext, depthBuffersForMainRenderPass
+    );
+    //render pass depends upon the depth buffer
+    CreateRenderPasses(vkContext);
     CreateHelloSampler(vkContext);
     //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
     //before the uniform buffer pool is created
     entities::GameObjectUniformBufferPool::Initialize(&vkContext);
 
     CreateGraphicsPipeline(vkContext);
-    CreateFramebuffers(vkContext);
+
+    CreateFramebuffers(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
 
 
     CreateUniformBuffersForCamera(vkContext);

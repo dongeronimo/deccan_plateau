@@ -34,4 +34,24 @@ namespace entities {
         VkDeviceMemory mDeviceMemory;
         std::map<std::string, Image> mImageTable;
     };
+
+    class DepthBufferManager {
+    public:
+        static VkFormat findDepthFormat(VkPhysicalDevice physicalDevice);
+        static VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features, VkPhysicalDevice physicalDevice);
+        struct DepthBufferCreationData {
+            uint32_t w;
+            uint32_t h;
+            std::string name;
+        };
+        DepthBufferManager(VkContext* ctx, std::vector<DepthBufferCreationData> images);
+        ~DepthBufferManager();
+        VkImageView GetImageView(const std::string& name)const {
+            return mImageTable.at(name).mImageView;
+        }
+        const VkContext* mCtx;
+    private:
+        VkDeviceMemory mDeviceMemory;
+        std::map<std::string, Image> mImageTable;
+    };
 }

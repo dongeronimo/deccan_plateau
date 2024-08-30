@@ -4,6 +4,41 @@
 #include "object_namer.h"
 #include "concatenate.h"
 #include "commandBufferUtils.h"
+void SetImageObjName(VkImage img, const std::string& baseName) {
+    auto name = Concatenate(baseName, "ImageObject");
+    SET_NAME(img, VK_OBJECT_TYPE_IMAGE, name.c_str());
+}
+
+uint32_t FindMemoryTypesCompatibleWithAllImages(const std::vector<VkMemoryRequirements>& memoryRequirements) {
+    uint32_t compatibleMemoryTypes = ~0; // Start with all bits set to 1
+    for (const auto& memreq : memoryRequirements) {
+        // Intersect with current memoryTypeBits
+        compatibleMemoryTypes &= memreq.memoryTypeBits;
+    }
+    return compatibleMemoryTypes;
+}
+VkImage CreateImage(VkDevice device, uint32_t w, uint32_t h, VkFormat format,
+    VkImageUsageFlags usage) {
+    VkImageCreateInfo imageInfo{};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent.width = w;
+    imageInfo.extent.height = h;
+    imageInfo.extent.depth = 1;
+    imageInfo.mipLevels = 1;
+    imageInfo.arrayLayers = 1;
+    imageInfo.format = format;//VK_FORMAT_R8G8B8A8_SRGB;
+    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = usage;//VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VkImage image;
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create image!");
+    }
+    return image;
+}
 uint32_t __findMemoryType(uint32_t typeFilter, 
     VkMemoryPropertyFlags properties, 
     VkPhysicalDevice physicalDevice) {
@@ -60,26 +95,10 @@ namespace entities {
         VkDeviceSize totalSize = 0;
         VkDeviceSize currentOffset = 0;
         for (int i = 0; i < images.size(); i++) {
-            VkImageCreateInfo imageInfo{};
-            imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            imageInfo.imageType = VK_IMAGE_TYPE_2D;
-            imageInfo.extent.width = images[i]->w;
-            imageInfo.extent.height = images[i]->h;
-            imageInfo.extent.depth = 1;
-            imageInfo.mipLevels = 1;
-            imageInfo.arrayLayers = 1;
-            imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-            imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-            imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-            imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VkImage image;
-            if (vkCreateImage(ctx->device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create image!");
-            }
-            auto name = Concatenate(images[i]->name, "ImageObject");
-            SET_NAME(image, VK_OBJECT_TYPE_IMAGE, name.c_str());
+            VkImage image = CreateImage(ctx->device, images[i]->w, images[i]->h,
+                VK_FORMAT_R8G8B8A8_SRGB,
+                VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+            SetImageObjName(image, images[i]->name);
             VkMemoryRequirements memRequirements;
             vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
             vkImages.push_back(image);
@@ -94,11 +113,7 @@ namespace entities {
         VkPhysicalDeviceMemoryProperties memProperties;
         vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
         //find the memory type that is compatible with all images        
-        uint32_t compatibleMemoryTypes = ~0; // Start with all bits set to 1
-        for (const auto& memreq : memoryRequirements) {
-            // Intersect with current memoryTypeBits
-            compatibleMemoryTypes &= memreq.memoryTypeBits;
-        }
+        uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
         uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes, 
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
         //allocate the big memory for all the images
@@ -247,5 +262,117 @@ namespace entities {
             1, &barrier
         );
         SubmitAndFinishCommands(commandBuffer, graphicsQueue, device, commandPool);
+    }
+
+    VkFormat DepthBufferManager::findDepthFormat(VkPhysicalDevice physicalDevice)
+    {
+        return findSupportedFormat(
+            { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT,
+            physicalDevice
+        );
+    }
+
+    VkFormat DepthBufferManager::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features, VkPhysicalDevice physicalDevice)
+    {
+        for (VkFormat format : candidates) {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+                return format;
+            }
+            else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+                return format;
+            }
+        }
+        throw std::runtime_error("failed to find supported format!");
+    }
+
+    DepthBufferManager::DepthBufferManager(VkContext* ctx,
+        std::vector<DepthBufferCreationData> images)
+        :mCtx(ctx), mDeviceMemory(VK_NULL_HANDLE)
+    {
+        //Calculate the memory requirements
+        std::vector<VkImage> vkImages;
+        std::vector<VkMemoryRequirements> memoryRequirements;
+        VkDeviceSize totalSize = 0;
+        VkDeviceSize currentOffset = 0;
+        for (int i = 0; i < images.size(); i++) {
+            VkFormat depthFormat = findDepthFormat(ctx->physicalDevice);
+            VkImage image = CreateImage(ctx->device, images[i].w, images[i].h,
+                depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+            SetImageObjName(image, images[i].name);
+            VkMemoryRequirements memRequirements;
+            vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
+            vkImages.push_back(image);
+            memoryRequirements.push_back(memRequirements);
+            // Align the current offset to the required alignment of this image
+            currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
+            // Update the total size needed
+            totalSize = currentOffset + memRequirements.size;
+            // Move the offset forward
+            currentOffset += memRequirements.size;
+        }
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
+        uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
+        uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
+        //allocate the big memory for all the images
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = totalSize;  // Total size from previous calculations
+        allocInfo.memoryTypeIndex = memoryTypeIndex;
+        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate large device memory!");
+        }
+        SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "DepthBuffersDeviceMemory");
+        //now we have to bind the vkImages to sections of the vkDeviceMemory
+        currentOffset = 0;
+        for (int i = 0; i < vkImages.size(); i++) {
+            VkMemoryRequirements memRequirements = memoryRequirements[i];
+            // Align the current offset to the required alignment of this image
+            currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
+            // Bind the image to the memory at the aligned offset
+            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to bind image memory!");
+            }
+            //create the view
+            VkImageViewCreateInfo depthImageViewInfo{};
+            depthImageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            depthImageViewInfo.image = vkImages[i];
+            depthImageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            depthImageViewInfo.format = findDepthFormat(ctx->physicalDevice);
+            depthImageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            depthImageViewInfo.subresourceRange.baseMipLevel = 0;
+            depthImageViewInfo.subresourceRange.levelCount = 1;
+            depthImageViewInfo.subresourceRange.baseArrayLayer = 0;
+            depthImageViewInfo.subresourceRange.layerCount = 1;
+            VkImageView depthImageView;
+            if (vkCreateImageView(ctx->device, &depthImageViewInfo,
+                nullptr, &depthImageView) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create depth image view!");
+            }
+            auto __name = Concatenate(images[i].name, "ImageView");
+            SET_NAME(depthImageView, VK_OBJECT_TYPE_IMAGE_VIEW, __name.c_str());
+            //add to the table
+            Image img{
+                vkImages[i],
+                depthImageView,
+                images[i].name
+            };
+            mImageTable.insert({ images[i].name, img });
+            // Move the offset forward
+            currentOffset += memRequirements.size;
+        }
+    }
+    DepthBufferManager::~DepthBufferManager()
+    {
+        for (auto& kv : mImageTable) {
+            vkDestroyImage(mCtx->device, kv.second.mImage, nullptr);
+            vkDestroyImageView(mCtx->device, kv.second.mImageView, nullptr);
+        }
+        vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
     }
 }

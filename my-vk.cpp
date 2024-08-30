@@ -482,7 +482,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     rasterizer.rasterizerDiscardEnable = VK_FALSE; //if true the geometry will never pass thru the rasterizer stage
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.lineWidth = 1.0f;
     //multisampling TODO: Disabled for now
@@ -520,6 +520,18 @@ void CreateGraphicsPipeline(VkContext& ctx)
     }
     SET_NAME(ctx.helloPipelineLayout, 
         VK_OBJECT_TYPE_PIPELINE_LAYOUT, "HelloPipelineLayout");
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil{};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.minDepthBounds = 0.0f; // Optional
+    depthStencil.maxDepthBounds = 1.0f; // Optional
+    depthStencil.stencilTestEnable = VK_FALSE;
+    depthStencil.front = {}; // Optional
+    depthStencil.back = {}; // Optional
     //the actual pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -531,7 +543,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = nullptr; // Optional
+    pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     //link the pipeline layout to the pipeline
@@ -569,6 +581,18 @@ void DestroyPipelineLayout(VkContext& ctx)
 
 void CreateRenderPasses(VkContext& ctx)
 {
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     //the image that'll hold the result
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = ctx.swapChainImageFormat;
@@ -588,11 +612,15 @@ void CreateRenderPasses(VkContext& ctx)
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
     //the actual render pass, composed of image attachments and subpasses
+    std::array<VkAttachmentDescription, 2> attachments = { 
+        colorAttachment, 
+        depthAttachment };
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;//the color attachments
+    renderPassInfo.attachmentCount = attachments.size();
+    renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
     //the render pass depends upon the previous render pass to run
@@ -600,16 +628,17 @@ void CreateRenderPasses(VkContext& ctx)
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
     //wait until the image is attached
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
     if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.renderPass) != VK_SUCCESS) {
         throw std::runtime_error("failed to create render pass!");
     }
+    SET_NAME(ctx.renderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
 }
 
 void DestroyRenderPass(VkContext& ctx)
@@ -622,20 +651,21 @@ void DestroyPipeline(VkContext& ctx)
     vkDestroyPipeline(ctx.device, ctx.graphicsPipeline, nullptr);
 }
 
-void CreateFramebuffers(VkContext& ctx)
+void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
 {
     //one framebuffer for each image. ImageViews are the interface to the underlying images
     ctx.swapChainFramebuffers.resize(ctx.swapChainImageViews.size());
     for (size_t i = 0; i < ctx.swapChainImageViews.size(); i++) {
-        VkImageView attachments[] = {
-            ctx.swapChainImageViews[i]
+        std::vector<VkImageView> attachments = {
+            ctx.swapChainImageViews[i],
+            depthImageView
         };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.renderPass = ctx.renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.attachmentCount = attachments.size();
+        framebufferInfo.pAttachments = attachments.data();
         framebufferInfo.width = ctx.swapChainExtent.width;
         framebufferInfo.height = ctx.swapChainExtent.height;
         framebufferInfo.layers = 1;
@@ -644,6 +674,8 @@ void CreateFramebuffers(VkContext& ctx)
             &ctx.swapChainFramebuffers[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create framebuffer!");
         }
+        auto _name = Concatenate("swapchain framebuffer ", i);
+        SET_NAME(ctx.swapChainFramebuffers[i], VK_OBJECT_TYPE_FRAMEBUFFER, _name.c_str());
     }
 }
 
@@ -729,9 +761,11 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
     renderPassInfo.renderArea.offset = { 0, 0 };
     renderPassInfo.renderArea.extent = ctx.swapChainExtent;
-    VkClearValue clearColor = { {{ ctx.clearColor[0], ctx.clearColor[1], ctx.clearColor[2], ctx.clearColor[3]}} };
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+    clearValues[1].depthStencil = { 1.0f, 0 };
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
     vkCmdBeginRenderPass(ctx.commandBuffers[ctx.currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     //bind the pipeline
     vkCmdBindPipeline(ctx.commandBuffers[ctx.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.graphicsPipeline);
@@ -905,6 +939,8 @@ void DestroySyncObjects(VkContext& ctx)
 
 void RecreateSwapChain(VkContext& ctx)
 {
+    assert(false);//broken
+    //TODO: depthBufferManager need to recreate it's depth buffers
     //handles minimization
     int w = 0, h = 0;
     glfwGetFramebufferSize(ctx.window, &w, &h);
@@ -922,7 +958,7 @@ void RecreateSwapChain(VkContext& ctx)
     //recreation
     CreateSwapChain(ctx);
     CreateImageViewForSwapChain(ctx);
-    CreateFramebuffers(ctx);
+    //CreateFramebuffers(ctx);
 }
 
 
