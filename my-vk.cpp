@@ -776,6 +776,23 @@ void CreateCommandBuffer(VkContext& ctx)
     }
 }
 
+void BeginRenderPass(VkRenderPass renderPass,
+    VkFramebuffer framebuffer,
+    VkCommandBuffer commandBuffer,
+    VkExtent2D extent,
+    std::array<VkClearValue, 2> clearValues) {
+    //begin the render pass of the render pass
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = framebuffer;
+    renderPassInfo.renderArea.offset = { 0, 0 };
+    renderPassInfo.renderArea.extent = extent;
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
 bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     // check window area to deal with the degenerate case of the user dragging a border until
     // it becomes zero
@@ -812,22 +829,6 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     if (vkBeginCommandBuffer(ctx.commandBuffers[ctx.currentFrame], &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("failed to begin recording command buffer!");
     }
-
-    //begin the render pass of the render pass
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = ctx.mSwapchainRenderPass;
-    renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = { 0, 0 };
-    renderPassInfo.renderArea.extent = ctx.swapChainExtent;
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-    clearValues[1].depthStencil = { 1.0f, 0 };
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-    vkCmdBeginRenderPass(ctx.commandBuffers[ctx.currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    //bind the pipeline
-    vkCmdBindPipeline(ctx.commandBuffers[ctx.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.graphicsPipeline);
     //viewport and scissors are dynamic
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -846,8 +847,7 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
 }
 
 void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
-    //end the render .pass
-    vkCmdEndRenderPass(ctx.commandBuffers[ctx.currentFrame]);
+
     //end the command buffer
     if (vkEndCommandBuffer(ctx.commandBuffers[ctx.currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");

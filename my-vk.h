@@ -304,10 +304,16 @@ void CreateSyncObjects(VkContext& ctx);
 void DestroySyncObjects(VkContext& ctx);
 
 void RecreateSwapChain(VkContext& ctx);
-
-//void CreateVertexBuffer(VkContext& ctx);
-
-//void CreateIndexBuffer(VkContext& ctx);
+/// <summary>
+/// Begin the render pass clearing both the color buffer and the depth buffer
+/// </summary>
+/// <param name="renderPass"></param>
+/// <param name="clearValues"></param>
+void BeginRenderPass(VkRenderPass renderPass,
+    VkFramebuffer framebuffer,
+    VkCommandBuffer commandBuffer,
+    VkExtent2D extent,
+    std::array<VkClearValue, 2> clearValues);
 /// <summary>
 /// Custom vkbuffer factory to encapsulate the buffer creation process and
 /// avoid repeating boring code
