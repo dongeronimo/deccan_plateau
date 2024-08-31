@@ -549,7 +549,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     //link the pipeline layout to the pipeline
     pipelineInfo.layout = ctx.helloPipelineLayout;
     //link the render pass to the pipeline
-    pipelineInfo.renderPass = ctx.renderPass;
+    pipelineInfo.renderPass = ctx.mSwapchainRenderPass;
     pipelineInfo.subpass = 0;
     if (vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 
         1,//number of pipelines 
@@ -579,7 +579,7 @@ void DestroyPipelineLayout(VkContext& ctx)
     vkDestroyPipelineLayout(ctx.device, ctx.helloPipelineLayout, nullptr);
 }
 
-void CreateRenderPasses(VkContext& ctx)
+void CreateSwapchainRenderPass(VkContext& ctx)
 {
     VkAttachmentDescription depthAttachment{};
     depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
@@ -635,15 +635,74 @@ void CreateRenderPasses(VkContext& ctx)
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.renderPass) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create render pass!");
+    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.mSwapchainRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create on screen render pass!");
     }
-    SET_NAME(ctx.renderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
+    SET_NAME(ctx.mSwapchainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
 }
 
-void DestroyRenderPass(VkContext& ctx)
+void DestroySwapchainRenderPass(VkContext& ctx)
 {
-    vkDestroyRenderPass(ctx.device, ctx.renderPass, nullptr);
+    vkDestroyRenderPass(ctx.device, ctx.mSwapchainRenderPass, nullptr);
+}
+
+void CreateRenderToTextureRenderPass(VkContext& ctx)
+{
+    VkAttachmentDescription colorAttachment = {};
+    colorAttachment.format = VK_FORMAT_R8G8B8A8_UNORM;  // Format of the offscreen image
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkAttachmentDescription depthAttachment = {};  // If depth is needed
+    depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorAttachmentRef = {};
+    colorAttachmentRef.attachment = 0;  // Index of the attachment in the render pass
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthAttachmentRef = {};
+    depthAttachmentRef.attachment = 1;  // Index of the depth attachment
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;  // The color attachment reference
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;  // The depth attachment reference
+
+    std::array<VkAttachmentDescription, 2> attachments = {
+    colorAttachment,
+    depthAttachment };
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = attachments.size();
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    VkSubpassDependency dependency = {};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;  // Operations outside the render pass
+    dependency.dstSubpass = 0;  // The first (and only) subpass in the render pass
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcAccessMask = 0;  // No prior access needed
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.mRenderToTextureRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render-to-texture render pass!");
+    }
+    SET_NAME(ctx.mSwapchainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "render-to-texture render pass");
 }
 
 void DestroyPipeline(VkContext& ctx)
@@ -663,7 +722,7 @@ void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = ctx.renderPass;
+        framebufferInfo.renderPass = ctx.mSwapchainRenderPass;
         framebufferInfo.attachmentCount = attachments.size();
         framebufferInfo.pAttachments = attachments.data();
         framebufferInfo.width = ctx.swapChainExtent.width;
@@ -757,7 +816,7 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     //begin the render pass of the render pass
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = ctx.renderPass;
+    renderPassInfo.renderPass = ctx.mSwapchainRenderPass;
     renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
     renderPassInfo.renderArea.offset = { 0, 0 };
     renderPassInfo.renderArea.extent = ctx.swapChainExtent;

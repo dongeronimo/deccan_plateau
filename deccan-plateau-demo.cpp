@@ -141,7 +141,8 @@ int main(int argc, char** argv)
         &vkContext, depthBuffersForMainRenderPass
     );
     //render pass depends upon the depth buffer
-    CreateRenderPasses(vkContext);
+    CreateSwapchainRenderPass(vkContext);
+    CreateRenderToTextureRenderPass(vkContext);
     CreateHelloSampler(vkContext);
     //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
     //before the uniform buffer pool is created
@@ -186,7 +187,7 @@ int main(int argc, char** argv)
     DestroyPipeline(vkContext);
     DestroyPipelineLayout(vkContext);
     DestroyFramebuffers(vkContext);
-    DestroyRenderPass(vkContext);
+    DestroySwapchainRenderPass(vkContext);
     DestroySwapChain(vkContext);
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);

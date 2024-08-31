@@ -166,8 +166,14 @@ struct VkContext
     /// My table of shader modules, they are thin wrappers around the .spv
     /// </summary>
     std::map<std::string, VkShaderModule> shaderModules;
-
-    VkRenderPass renderPass;
+    /// <summary>
+    /// This render pass renders to the swap chain. Its framebuffer is attached to the swapchain images
+    /// </summary>
+    VkRenderPass mSwapchainRenderPass = VK_NULL_HANDLE;
+    /// <summary>
+    /// This render pass is to render to a texture (offscreen rendering).
+    /// </summary>
+    VkRenderPass mRenderToTextureRenderPass = VK_NULL_HANDLE;
     VkPipelineLayout helloPipelineLayout;
     /// <summary>
     /// The pipeline object. At the moment I have only one material (shaders + fixed states configs) so
@@ -275,9 +281,11 @@ void LoadShaderModules(VkContext& ctx);
 
 void DestroyPipelineLayout(VkContext& ctx);
 
-void CreateRenderPasses(VkContext& ctx);
+void CreateSwapchainRenderPass(VkContext& ctx);
 
-void DestroyRenderPass(VkContext& ctx);
+void DestroySwapchainRenderPass(VkContext& ctx);
+
+void CreateRenderToTextureRenderPass(VkContext& ctx);
 
 void DestroyPipeline(VkContext& ctx);
 
