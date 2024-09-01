@@ -73,6 +73,8 @@ add_executable(deccan-plateau-demo
 	object_namer.cpp
 	object_namer.h
 	concatenate.h
+    entities/pipeline.cpp
+    entities/pipeline.h
     entities/game-object.cpp
     entities/game-object.h
     entities/mesh.cpp

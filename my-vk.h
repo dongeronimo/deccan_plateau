@@ -275,7 +275,6 @@ VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& avai
 
 void CreateImageViewForSwapChain(VkContext& ctx);
 
-void CreateGraphicsPipeline(VkContext& ctx);
 
 void LoadShaderModules(VkContext& ctx);
 
@@ -380,3 +379,4 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
 void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
 
+void CreateHelloPipeline(VkContext& ctx);

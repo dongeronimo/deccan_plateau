@@ -15,8 +15,10 @@
 #include "io/mesh-load.h"
 #include "io/image-load.h"
 #include "concatenate.h"
+#include "entities/pipeline.h"
 std::map<std::string, entities::Mesh*> gMeshTable;
-
+entities::Pipeline* helloForSwapChain = nullptr;
+entities::Pipeline* helloForRenderToTexture = nullptr;
 VkContext vkContext{};
 
 const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
@@ -148,7 +150,28 @@ int main(int argc, char** argv)
     //before the uniform buffer pool is created
     entities::GameObjectUniformBufferPool::Initialize(&vkContext);
 
-    CreateGraphicsPipeline(vkContext);
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
+        vkContext.helloCameraDescriptorSetLayout,//set 0
+        vkContext.helloObjectDescriptorSetLayout,//set 1
+        vkContext.helloSamplerDescriptorSetLayout //set 2
+    };
+    //the main difference between these 2 pipelines is that one renders to the swap chain, the other
+    //to a texture. That's because each of them uses a different render pass, and one render pass 
+    //goes to the swap chain and other to a texture.
+    helloForSwapChain = new entities::Pipeline(&vkContext, 
+        vkContext.mSwapchainRenderPass, 
+        descriptorSetLayouts,
+        "helloForSwapChain");
+    helloForRenderToTexture = new entities::Pipeline(&vkContext, 
+        vkContext.mRenderToTextureRenderPass, 
+        descriptorSetLayouts,
+        "helloForRenderToTexture");
+    std::vector<entities::RenderToTextureTargetManager::RenderToTextureImageCreateData> renderToTextureImages = {
+        {
+        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "helloOffscreenPipelineTarget"
+        }
+    };
+    entities::RenderToTextureTargetManager* rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
 
     CreateFramebuffers(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
 

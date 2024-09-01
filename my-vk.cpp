@@ -434,7 +434,7 @@ VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char>& code
     return shaderModule;
 }
 
-void CreateGraphicsPipeline(VkContext& ctx)
+void CreateHelloPipeline(VkContext& ctx)
 {
     LoadShaderModules(ctx);
     //description of the shader stages

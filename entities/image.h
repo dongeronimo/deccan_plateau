@@ -34,6 +34,24 @@ namespace entities {
         VkDeviceMemory mDeviceMemory;
         std::map<std::string, Image> mImageTable;
     };
+    /// <summary>
+    /// Stores the render to texture targets.
+    /// TODO resize: the render to texture targets may need to be destroyed then recreated when the screen size changes.
+    /// </summary>
+    class RenderToTextureTargetManager {
+    public:
+        struct RenderToTextureImageCreateData {
+            uint32_t w, h;
+            VkFormat format;
+            VkImageUsageFlags usage;
+            std::string name;
+        };
+        RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> imgs);
+        const VkContext* mCtx;
+    private:
+        VkDeviceMemory mDeviceMemory = VK_NULL_HANDLE;
+        std::map<std::string, Image> mImageTable;
+    };
 
     class DepthBufferManager {
     public:

@@ -86,6 +86,85 @@ void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t 
 }
 
 namespace entities {
+    RenderToTextureTargetManager::RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> images) :
+        mCtx(ctx)
+    {
+        std::vector<VkImage> vkImages;
+        std::vector<VkMemoryRequirements> memoryRequirements;
+        VkDeviceSize totalSize = 0;
+        VkDeviceSize currentOffset = 0;
+        for (int i = 0; i < images.size(); i++) {
+            VkImage image = CreateImage(ctx->device, images[i].w, images[i].h,
+                images[i].format,
+                images[i].usage);
+            SetImageObjName(image, images[i].name);
+            VkMemoryRequirements memRequirements;
+            vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
+            vkImages.push_back(image);
+            memoryRequirements.push_back(memRequirements);
+            // Align the current offset to the required alignment of this image
+            currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
+            // Update the total size needed
+            totalSize = currentOffset + memRequirements.size;
+            // Move the offset forward
+            currentOffset += memRequirements.size;
+        }
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
+        uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
+        uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
+        //allocate the big memory for all the images
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = totalSize;  // Total size from previous calculations
+        allocInfo.memoryTypeIndex = memoryTypeIndex;
+        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate large device memory!");
+        }
+        SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "RenderToTextureDeviceMemory");
+        currentOffset = 0;
+        for (int i = 0; i < vkImages.size(); i++) {
+            VkMemoryRequirements memRequirements = memoryRequirements[i];
+            // Align the current offset to the required alignment of this image
+            currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
+            // Bind the image to the memory at the aligned offset
+            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
+                throw std::runtime_error("Failed to bind image memory!");
+            }
+            
+            //create the view
+            VkImageViewCreateInfo textureViewInfo{};
+            textureViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            textureViewInfo.image = vkImages[i];
+            textureViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            textureViewInfo.format = images[i].format;
+            textureViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            textureViewInfo.subresourceRange.baseMipLevel = 0;
+            textureViewInfo.subresourceRange.levelCount = 1;
+            textureViewInfo.subresourceRange.baseArrayLayer = 0;
+            textureViewInfo.subresourceRange.layerCount = 1;
+            textureViewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            textureViewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            textureViewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            textureViewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            VkImageView textureImageView;
+            if (vkCreateImageView(ctx->device, &textureViewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create texture image view!");
+            }
+            auto __name = Concatenate(images[i].name, "ImageView");
+            SET_NAME(textureImageView, VK_OBJECT_TYPE_IMAGE_VIEW, __name.c_str());
+            //add to the table
+            Image img{
+                vkImages[i],
+                textureImageView,
+                images[i].name
+            };
+            mImageTable.insert({ images[i].name, img });
+            // Move the offset forward
+            currentOffset += memRequirements.size;
+        }
+    }
     GpuTextureManager::GpuTextureManager(VkContext* ctx,
         std::vector<io::ImageData*> images):mCtx(ctx)
     {
@@ -375,4 +454,6 @@ namespace entities {
         }
         vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
     }
+
+
 }
