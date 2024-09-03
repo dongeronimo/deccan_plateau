@@ -162,6 +162,7 @@ struct VkContext
     /// Table of swap chain framebuffers, one for each swap chain image
     /// </summary>
     std::vector<VkFramebuffer> swapChainFramebuffers;
+    VkFramebuffer mRTTFramebuffer = VK_NULL_HANDLE;
     /// <summary>
     /// My table of shader modules, they are thin wrappers around the .spv
     /// </summary>
@@ -288,7 +289,13 @@ void CreateRenderToTextureRenderPass(VkContext& ctx);
 
 void DestroyPipeline(VkContext& ctx);
 
-void CreateFramebuffers(VkContext& ctx, VkImageView depthImageViews);
+void CreateFramebuffersForRenderToTextureRenderPass(VkContext& ctx, 
+    VkImageView depthImageView, 
+    VkImageView colorImageView,
+    VkRenderPass renderPass,
+    uint32_t w, uint32_t h);
+
+void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthImageViews);
 
 void DestroyFramebuffers(VkContext& ctx);
 

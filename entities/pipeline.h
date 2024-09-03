@@ -3,7 +3,10 @@
 #include <string>
 #include <vector>
 struct VkContext;
+struct CameraUniformBuffer;
 namespace entities {
+    class GameObject;
+
     class Pipeline {
     public:
         /// <summary>
@@ -23,6 +26,9 @@ namespace entities {
         const VkRenderPass mRenderPass;
         VkPipeline GetPipeline()const { return pipeline; }
         VkPipelineLayout GetPipelineLayout()const { return pipelineLayout; }
+        void Bind(VkCommandBuffer cmd);
+        void DrawGameObject(GameObject* obj, CameraUniformBuffer* camera,
+            VkCommandBuffer cmd);
     private:
         VkShaderModule vertexShaderModule = VK_NULL_HANDLE;
         VkShaderModule fragmentShaderModule = VK_NULL_HANDLE;

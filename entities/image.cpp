@@ -165,6 +165,10 @@ namespace entities {
             currentOffset += memRequirements.size;
         }
     }
+    VkImageView RenderToTextureTargetManager::GetImageView(const std::string& name) const
+    {
+        return mImageTable.at(name).mImageView;
+    }
     GpuTextureManager::GpuTextureManager(VkContext* ctx,
         std::vector<io::ImageData*> images):mCtx(ctx)
     {

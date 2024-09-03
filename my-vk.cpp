@@ -649,12 +649,13 @@ void DestroySwapchainRenderPass(VkContext& ctx)
 void CreateRenderToTextureRenderPass(VkContext& ctx)
 {
     VkAttachmentDescription colorAttachment = {};
-    colorAttachment.format = VK_FORMAT_R8G8B8A8_UNORM;  // Format of the offscreen image
+    //VK_FORMAT_R8G8B8A8_SRGB
+    colorAttachment.format = VK_FORMAT_R8G8B8A8_SRGB;  // Format of the offscreen image
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;//slower but does not constrain me
 
     VkAttachmentDescription depthAttachment = {};  // If depth is needed
     depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
@@ -702,7 +703,7 @@ void CreateRenderToTextureRenderPass(VkContext& ctx)
     if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.mRenderToTextureRenderPass) != VK_SUCCESS) {
         throw std::runtime_error("failed to create render-to-texture render pass!");
     }
-    SET_NAME(ctx.mSwapchainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "render-to-texture render pass");
+    SET_NAME(ctx.mRenderToTextureRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "render-to-texture render pass");
 }
 
 void DestroyPipeline(VkContext& ctx)
@@ -710,7 +711,33 @@ void DestroyPipeline(VkContext& ctx)
     vkDestroyPipeline(ctx.device, ctx.graphicsPipeline, nullptr);
 }
 
-void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
+void CreateFramebuffersForRenderToTextureRenderPass(VkContext& ctx, 
+    VkImageView depthImageView, 
+    VkImageView colorImageView, 
+    VkRenderPass renderPass,
+    uint32_t w, uint32_t h)
+{
+    std::vector<VkImageView> attachments = {
+            colorImageView,
+            depthImageView
+    };
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = attachments.size();
+    framebufferInfo.pAttachments = attachments.data();
+    framebufferInfo.width = w;
+    framebufferInfo.height = h;
+    framebufferInfo.layers = 1;
+    if (vkCreateFramebuffer(ctx.device, &framebufferInfo, nullptr,
+        &ctx.mRTTFramebuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create framebuffer!");
+    }
+    auto _name = Concatenate("mRTTFramebuffer");
+    SET_NAME(ctx.mRTTFramebuffer, VK_OBJECT_TYPE_FRAMEBUFFER, _name.c_str());
+}
+
+void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthImageView)
 {
     //one framebuffer for each image. ImageViews are the interface to the underlying images
     ctx.swapChainFramebuffers.resize(ctx.swapChainImageViews.size());

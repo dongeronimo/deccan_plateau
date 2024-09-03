@@ -47,6 +47,7 @@ namespace entities {
             std::string name;
         };
         RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> imgs);
+        VkImageView GetImageView(const std::string& name)const;
         const VkContext* mCtx;
     private:
         VkDeviceMemory mDeviceMemory = VK_NULL_HANDLE;

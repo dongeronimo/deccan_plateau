@@ -4,6 +4,8 @@
 #include "concatenate.h"
 #include "my-vk.h"
 #include "object_namer.h"
+#include "game-object.h"
+#include "mesh.h"
 namespace entities {
     VkShaderModule Pipeline::LoadShaderModule(VkDevice device, const std::string& name)
     {
@@ -162,5 +164,65 @@ namespace entities {
         //the shader modules are no longer necessary by now.
         vkDestroyShaderModule(ctx->device, vertexShaderModule, nullptr);
         vkDestroyShaderModule(ctx->device, fragmentShaderModule, nullptr);
+    }
+    void Pipeline::Bind(VkCommandBuffer cmd)
+    {
+        vkCmdBindPipeline(cmd,
+            VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+    }
+    void Pipeline::DrawGameObject(GameObject* go, 
+        CameraUniformBuffer* camera,
+        VkCommandBuffer cmdBuffer)
+    {
+        SetMark({ 1.0f, 0.0f, 0.0f, 1.0f }, go->mName, cmdBuffer, *mCtx);
+        //copies camera data to gpu
+        memcpy(mCtx->helloCameraUniformBufferAddress[mCtx->currentFrame], camera, sizeof(CameraUniformBuffer));
+        //copies object data to gpu
+        go->CommitDataToObjectBuffer(mCtx->currentFrame);
+        go->mMesh->Bind(cmdBuffer);
+        //bind the camera descriptor set
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,   // We assume it's a graphics pipeline
+            pipelineLayout,                    // The pipeline layout that matches the shader's descriptor set layouts
+            0,                                 // firstSet, which is the index of the first descriptor set (set = 0)
+            1,                                 // descriptorSetCount, number of descriptor sets to bind
+            &mCtx->helloCameraDescriptorSets[mCtx->currentFrame],              // Pointer to the array of descriptor sets (only one in this case)
+            0,                                 // dynamicOffsetCount, assuming no dynamic offsets
+            nullptr                            // pDynamicOffsets, assuming no dynamic offsets
+        );
+        //bind the object-specific descriptor set
+        // Bind the object-specific descriptor set (set = 1)
+        VkDescriptorSet objectDescriptorSet = go->GetDescriptorSet(mCtx->currentFrame);
+        uint32_t dynamicOffset = go->DynamicOffset(mCtx->currentFrame);
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayout,
+            1,                                 // firstSet, index of the first descriptor set (set = 1)
+            1,                                 // descriptorSetCount, number of descriptor sets to bind
+            &objectDescriptorSet,              // Pointer to the array of descriptor sets (only one in this case)
+            1,
+            &dynamicOffset
+        );
+        //bind the sampler
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayout,
+            2, //third set
+            1,
+            &mCtx->helloSamplerDescriptorSets[mCtx->currentFrame],
+            0,
+            nullptr
+        );
+        //Draw command
+        vkCmdDrawIndexed(cmdBuffer,
+            static_cast<uint32_t>(go->mMesh->NumberOfIndices()),
+            1,
+            0,
+            0,
+            0);
+        mCtx->vkCmdDebugMarkerEndEXT(cmdBuffer);
     }
 }

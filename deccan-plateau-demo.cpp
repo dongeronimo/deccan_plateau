@@ -135,10 +135,11 @@ int main(int argc, char** argv)
         &vkContext, gpuTextures);
     //create the depth buffers
     std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
-    depthBuffersForMainRenderPass.push_back({
-        WIDTH, HEIGHT, "mainRenderPassDepthBuffer"
-        });
-    
+    depthBuffersForMainRenderPass.push_back(
+        {WIDTH, HEIGHT, "mainRenderPassDepthBuffer"});
+    depthBuffersForMainRenderPass.push_back(
+        { WIDTH, HEIGHT, "helloOffscreenRenderPassDepthBuffer" }
+    );
     entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
         &vkContext, depthBuffersForMainRenderPass
     );
@@ -168,12 +169,20 @@ int main(int argc, char** argv)
         "helloForRenderToTexture");
     std::vector<entities::RenderToTextureTargetManager::RenderToTextureImageCreateData> renderToTextureImages = {
         {
-        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, "helloOffscreenPipelineTarget"
+        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_SRGB, 
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
+        VK_IMAGE_USAGE_SAMPLED_BIT |
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 
+        "helloOffscreenRenderPassTarget"
         }
     };
     entities::RenderToTextureTargetManager* rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
 
-    CreateFramebuffers(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
+    CreateFramebuffersForOnscreenRenderPass(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
+    CreateFramebuffersForRenderToTextureRenderPass(vkContext,
+        depthBufferManager->GetImageView("helloOffscreenRenderPassDepthBuffer"),
+        rttManager->GetImageView("helloOffscreenRenderPassTarget"),
+        vkContext.mRenderToTextureRenderPass, WIDTH, HEIGHT);
 
 
     CreateUniformBuffersForCamera(vkContext);
@@ -257,24 +266,44 @@ void MainLoop(GLFWwindow* window)
         uint32_t imageIndex;
         if (BeginFrame(vkContext, imageIndex)) {
             //begins the on-screen render pass
-            std::array<VkClearValue, 2> clearValues{};
-            clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-            clearValues[1].depthStencil = { 1.0f, 0 };
+            SetMark({ 0.2f, 0.8f, 0.1f }, "OnScreenRenderPass", vkContext.commandBuffers[vkContext.currentFrame], vkContext);
+            std::array<VkClearValue, 2> onscreenClearValues{};
+            onscreenClearValues[0].color = { {1.0f, 0.0f, 0.0f, 1.0f} };
+            onscreenClearValues[1].depthStencil = { 1.0f, 0 };
             BeginRenderPass(vkContext.mSwapchainRenderPass,
                 vkContext.swapChainFramebuffers[imageIndex],
                 vkContext.commandBuffers[vkContext.currentFrame],
                 vkContext.swapChainExtent,
-                clearValues
+                onscreenClearValues
             );
-            //bind the pipeline
-            vkCmdBindPipeline(vkContext.commandBuffers[vkContext.currentFrame],
-                VK_PIPELINE_BIND_POINT_GRAPHICS, vkContext.graphicsPipeline);
-
+            helloForSwapChain->Bind(vkContext.commandBuffers[vkContext.currentFrame]);
             for (auto go : gGameObjects) {
-                DrawGameObject(go, cameraBuffer, vkContext);
+                helloForSwapChain->DrawGameObject(go, &cameraBuffer, 
+                    vkContext.commandBuffers[vkContext.currentFrame]);
             }
             //end the on-screen render pass
+            vkContext.vkCmdDebugMarkerEndEXT(vkContext.commandBuffers[vkContext.currentFrame]);
             vkCmdEndRenderPass(vkContext.commandBuffers[vkContext.currentFrame]);
+            //begin the offscreen render pass
+            SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", vkContext.commandBuffers[vkContext.currentFrame], vkContext);
+            std::array<VkClearValue, 2> offscreenClearValues{};
+            offscreenClearValues[0].color = { {0.0f, 1.0f, 0.0f, 1.0f} };
+            offscreenClearValues[1].depthStencil = { 1.0f, 0 };
+            BeginRenderPass(vkContext.mRenderToTextureRenderPass,
+                vkContext.mRTTFramebuffer,
+                vkContext.commandBuffers[vkContext.currentFrame],
+                vkContext.swapChainExtent,
+                offscreenClearValues
+            );
+            helloForRenderToTexture->Bind(vkContext.commandBuffers[vkContext.currentFrame]);
+            for (auto go : gGameObjects) {
+                helloForRenderToTexture->DrawGameObject(go, &cameraBuffer,
+                    vkContext.commandBuffers[vkContext.currentFrame]);
+            }
+            //end the offscreen render pass
+            vkCmdEndRenderPass(vkContext.commandBuffers[vkContext.currentFrame]);
+            //end the frame
+            vkContext.vkCmdDebugMarkerEndEXT(vkContext.commandBuffers[vkContext.currentFrame]);
             EndFrame(vkContext, imageIndex);
         }
         
