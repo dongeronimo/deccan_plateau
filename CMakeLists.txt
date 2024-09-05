@@ -87,8 +87,11 @@ add_executable(deccan-plateau-demo
     io/mesh-load.cpp
     io/mesh-load.h
     io/stb_image.h
+    io/stb_image_write.h
     io/image-load.h
     io/image-load.cpp
+    gpu-picking/gpu-picker-pipeline.cpp
+    gpu-picking/gpu-picker-pipeline.h
 
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)

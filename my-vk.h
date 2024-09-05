@@ -7,7 +7,7 @@
 #include <map>
 #include <array>
 #include <glm/glm.hpp>
-
+#include <functional>
 namespace entities {
     class GameObject;
     class GpuTextureManager;
@@ -387,3 +387,5 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
 
 void CreateHelloPipeline(VkContext& ctx);
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx);

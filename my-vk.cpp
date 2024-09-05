@@ -883,11 +883,15 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     // it'll wait until the colours are written to the framebuffer
-    VkSemaphore waitSemaphores[] = { ctx.imageAvailableSemaphores[ctx.currentFrame] };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
+    std::vector<VkSemaphore> waitSemaphores{
+        ctx.imageAvailableSemaphores[ctx.currentFrame]
+        /*,gpuPickerSemaphore*/
+    };
+    
+    VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    submitInfo.waitSemaphoreCount = waitSemaphores.size();
+    submitInfo.pWaitSemaphores = waitSemaphores.data();
+    submitInfo.pWaitDstStageMask = &waitStages;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &ctx.commandBuffers[ctx.currentFrame];
 
@@ -895,7 +899,8 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(ctx.graphicsQueue, 1, &submitInfo, ctx.inFlightFences[ctx.currentFrame]) != VK_SUCCESS) {
+    if (vkQueueSubmit(ctx.graphicsQueue, 1, 
+        &submitInfo, ctx.inFlightFences[ctx.currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
     //presentation

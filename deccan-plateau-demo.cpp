@@ -16,9 +16,13 @@
 #include "io/image-load.h"
 #include "concatenate.h"
 #include "entities/pipeline.h"
+#include "gpu-picking/gpu-picker-pipeline.h"
+
 std::map<std::string, entities::Mesh*> gMeshTable;
 entities::Pipeline* helloForSwapChain = nullptr;
-entities::Pipeline* helloForRenderToTexture = nullptr;
+//entities::Pipeline* helloForRenderToTexture = nullptr;
+GpuPicker::GpuPickerPipeline* gpuPickerPipeline = nullptr;
+entities::RenderToTextureTargetManager* rttManager = nullptr;
 VkContext vkContext{};
 
 const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
@@ -163,25 +167,34 @@ int main(int argc, char** argv)
         vkContext.mSwapchainRenderPass, 
         descriptorSetLayouts,
         "helloForSwapChain");
-    helloForRenderToTexture = new entities::Pipeline(&vkContext, 
-        vkContext.mRenderToTextureRenderPass, 
-        descriptorSetLayouts,
-        "helloForRenderToTexture");
+    //helloForRenderToTexture = new entities::Pipeline(&vkContext, 
+    //    vkContext.mRenderToTextureRenderPass, 
+    //    descriptorSetLayouts,
+    //    "helloForRenderToTexture");
+    //
+    gpuPickerPipeline = new GpuPicker::GpuPickerPipeline(&vkContext,
+        vkContext.mRenderToTextureRenderPass,//TODO: Create a render pass for gpu picker
+        { vkContext.helloCameraDescriptorSetLayout, 
+          vkContext.helloObjectDescriptorSetLayout }, 
+        "gpuPickerPipeline");
+    
+        
+        
     std::vector<entities::RenderToTextureTargetManager::RenderToTextureImageCreateData> renderToTextureImages = {
         {
         WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_SRGB, 
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
         VK_IMAGE_USAGE_SAMPLED_BIT |
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 
-        "helloOffscreenRenderPassTarget"
+        GpuPicker::GPU_PICKER_RENDER_PASS_TARGET
         }
     };
-    entities::RenderToTextureTargetManager* rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
+    rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
 
     CreateFramebuffersForOnscreenRenderPass(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
     CreateFramebuffersForRenderToTextureRenderPass(vkContext,
         depthBufferManager->GetImageView("helloOffscreenRenderPassDepthBuffer"),
-        rttManager->GetImageView("helloOffscreenRenderPassTarget"),
+        rttManager->GetImageView(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
         vkContext.mRenderToTextureRenderPass, WIDTH, HEIGHT);
 
 
@@ -265,46 +278,55 @@ void MainLoop(GLFWwindow* window)
 
         uint32_t imageIndex;
         if (BeginFrame(vkContext, imageIndex)) {
+            VkCommandBuffer currentCommand = vkContext.commandBuffers[vkContext.currentFrame];
             //begins the on-screen render pass
-            SetMark({ 0.2f, 0.8f, 0.1f }, "OnScreenRenderPass", vkContext.commandBuffers[vkContext.currentFrame], vkContext);
+            SetMark({ 0.2f, 0.8f, 0.1f }, "OnScreenRenderPass", currentCommand, vkContext);
             std::array<VkClearValue, 2> onscreenClearValues{};
             onscreenClearValues[0].color = { {1.0f, 0.0f, 0.0f, 1.0f} };
             onscreenClearValues[1].depthStencil = { 1.0f, 0 };
             BeginRenderPass(vkContext.mSwapchainRenderPass,
                 vkContext.swapChainFramebuffers[imageIndex],
-                vkContext.commandBuffers[vkContext.currentFrame],
+                currentCommand,
                 vkContext.swapChainExtent,
                 onscreenClearValues
             );
-            helloForSwapChain->Bind(vkContext.commandBuffers[vkContext.currentFrame]);
+            helloForSwapChain->Bind(currentCommand);
             for (auto go : gGameObjects) {
                 helloForSwapChain->DrawGameObject(go, &cameraBuffer, 
                     vkContext.commandBuffers[vkContext.currentFrame]);
             }
             //end the on-screen render pass
-            vkContext.vkCmdDebugMarkerEndEXT(vkContext.commandBuffers[vkContext.currentFrame]);
-            vkCmdEndRenderPass(vkContext.commandBuffers[vkContext.currentFrame]);
-            //begin the offscreen render pass
-            SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", vkContext.commandBuffers[vkContext.currentFrame], vkContext);
+            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+            vkCmdEndRenderPass(currentCommand);
+            //begin the offscreen render pass to draw the objs for picking
+            SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", currentCommand, vkContext);
             std::array<VkClearValue, 2> offscreenClearValues{};
-            offscreenClearValues[0].color = { {0.0f, 1.0f, 0.0f, 1.0f} };
+            offscreenClearValues[0].color = { {1.0f, 1.0f, 1.0f, 1.0f} };
             offscreenClearValues[1].depthStencil = { 1.0f, 0 };
             BeginRenderPass(vkContext.mRenderToTextureRenderPass,
                 vkContext.mRTTFramebuffer,
-                vkContext.commandBuffers[vkContext.currentFrame],
+                currentCommand,
                 vkContext.swapChainExtent,
                 offscreenClearValues
             );
-            helloForRenderToTexture->Bind(vkContext.commandBuffers[vkContext.currentFrame]);
+            gpuPickerPipeline->Bind(currentCommand);
             for (auto go : gGameObjects) {
-                helloForRenderToTexture->DrawGameObject(go, &cameraBuffer,
-                    vkContext.commandBuffers[vkContext.currentFrame]);
+                gpuPickerPipeline->DrawGameObject(go, &cameraBuffer,
+                    currentCommand);
             }
             //end the offscreen render pass
-            vkCmdEndRenderPass(vkContext.commandBuffers[vkContext.currentFrame]);
+            vkCmdEndRenderPass(currentCommand);
+            //schedule the memory transfer. The cpu-side image won't be available just now
+            gpuPickerPipeline->ScheduleTransferImageFromGPUtoCPU(currentCommand,
+                rttManager->GetImage(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
+                WIDTH, HEIGHT);
             //end the frame
-            vkContext.vkCmdDebugMarkerEndEXT(vkContext.commandBuffers[vkContext.currentFrame]);
+            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
             EndFrame(vkContext, imageIndex);
+            std::vector<uint8_t> pixels = gpuPickerPipeline->GetImage();
+            //io::WriteImage("foo.bmp", WIDTH, HEIGHT, pixels);
+            //// int stbi_write_bmp(char const *filename, int w, int h, int comp, const void *data);
+
         }
         
     }

@@ -169,6 +169,12 @@ namespace entities {
     {
         return mImageTable.at(name).mImageView;
     }
+
+    VkImage RenderToTextureTargetManager::GetImage(const std::string& name) const
+    {
+        return mImageTable.at(name).mImage;
+    }
+
     GpuTextureManager::GpuTextureManager(VkContext* ctx,
         std::vector<io::ImageData*> images):mCtx(ctx)
     {
