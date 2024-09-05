@@ -31,4 +31,6 @@ namespace io {
 
     ImageData* LoadImage(const std::string& file);
 
+    void WriteImage(const std::string& filename, int w, int h, const std::vector<uint8_t>& data);
+
 }

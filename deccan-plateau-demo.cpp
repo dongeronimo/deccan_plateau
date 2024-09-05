@@ -15,8 +15,14 @@
 #include "io/mesh-load.h"
 #include "io/image-load.h"
 #include "concatenate.h"
-std::map<std::string, entities::Mesh*> gMeshTable;
+#include "entities/pipeline.h"
+#include "gpu-picking/gpu-picker-pipeline.h"
 
+std::map<std::string, entities::Mesh*> gMeshTable;
+entities::Pipeline* helloForSwapChain = nullptr;
+//entities::Pipeline* helloForRenderToTexture = nullptr;
+GpuPicker::GpuPickerPipeline* gpuPickerPipeline = nullptr;
+entities::RenderToTextureTargetManager* rttManager = nullptr;
 VkContext vkContext{};
 
 const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
@@ -133,23 +139,63 @@ int main(int argc, char** argv)
         &vkContext, gpuTextures);
     //create the depth buffers
     std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
-    depthBuffersForMainRenderPass.push_back({
-        WIDTH, HEIGHT, "mainRenderPassDepthBuffer"
-        });
-    
+    depthBuffersForMainRenderPass.push_back(
+        {WIDTH, HEIGHT, "mainRenderPassDepthBuffer"});
+    depthBuffersForMainRenderPass.push_back(
+        { WIDTH, HEIGHT, "helloOffscreenRenderPassDepthBuffer" }
+    );
     entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
         &vkContext, depthBuffersForMainRenderPass
     );
     //render pass depends upon the depth buffer
-    CreateRenderPasses(vkContext);
+    CreateSwapchainRenderPass(vkContext);
+    CreateRenderToTextureRenderPass(vkContext);
     CreateHelloSampler(vkContext);
     //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
     //before the uniform buffer pool is created
     entities::GameObjectUniformBufferPool::Initialize(&vkContext);
 
-    CreateGraphicsPipeline(vkContext);
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
+        vkContext.helloCameraDescriptorSetLayout,//set 0
+        vkContext.helloObjectDescriptorSetLayout,//set 1
+        vkContext.helloSamplerDescriptorSetLayout //set 2
+    };
+    //the main difference between these 2 pipelines is that one renders to the swap chain, the other
+    //to a texture. That's because each of them uses a different render pass, and one render pass 
+    //goes to the swap chain and other to a texture.
+    helloForSwapChain = new entities::Pipeline(&vkContext, 
+        vkContext.mSwapchainRenderPass, 
+        descriptorSetLayouts,
+        "helloForSwapChain");
+    //helloForRenderToTexture = new entities::Pipeline(&vkContext, 
+    //    vkContext.mRenderToTextureRenderPass, 
+    //    descriptorSetLayouts,
+    //    "helloForRenderToTexture");
+    //
+    gpuPickerPipeline = new GpuPicker::GpuPickerPipeline(&vkContext,
+        vkContext.mRenderToTextureRenderPass,//TODO: Create a render pass for gpu picker
+        { vkContext.helloCameraDescriptorSetLayout, 
+          vkContext.helloObjectDescriptorSetLayout }, 
+        "gpuPickerPipeline");
+    
+        
+        
+    std::vector<entities::RenderToTextureTargetManager::RenderToTextureImageCreateData> renderToTextureImages = {
+        {
+        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_UNORM ,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
+        VK_IMAGE_USAGE_SAMPLED_BIT |
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 
+        GpuPicker::GPU_PICKER_RENDER_PASS_TARGET
+        }
+    };
+    rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
 
-    CreateFramebuffers(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
+    CreateFramebuffersForOnscreenRenderPass(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
+    CreateFramebuffersForRenderToTextureRenderPass(vkContext,
+        depthBufferManager->GetImageView("helloOffscreenRenderPassDepthBuffer"),
+        rttManager->GetImageView(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
+        vkContext.mRenderToTextureRenderPass, WIDTH, HEIGHT);
 
 
     CreateUniformBuffersForCamera(vkContext);
@@ -173,7 +219,9 @@ int main(int argc, char** argv)
     bar->SetPosition(glm::vec3{ -1,0,0 });
     gGameObjects.push_back(foo);
     gGameObjects.push_back(bar);
-
+    entities::GameObject* woo = new entities::GameObject(&vkContext, "woo", monkeyMesh);
+    woo->SetPosition(glm::vec3{ 0,4,0 });
+    gGameObjects.push_back(woo);
     MainLoop(window);
 
     glfwDestroyWindow(window);
@@ -186,7 +234,7 @@ int main(int argc, char** argv)
     DestroyPipeline(vkContext);
     DestroyPipelineLayout(vkContext);
     DestroyFramebuffers(vkContext);
-    DestroyRenderPass(vkContext);
+    DestroySwapchainRenderPass(vkContext);
     DestroySwapChain(vkContext);
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
@@ -209,8 +257,15 @@ int main(int argc, char** argv)
     return 0;
 }
 
+static glm::vec2 gMousePos{ 0,0 };
+
 void MainLoop(GLFWwindow* window)
 {
+    glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
+        gMousePos.x = xpos;
+        gMousePos.y = ypos;
+    });
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -223,7 +278,7 @@ void MainLoop(GLFWwindow* window)
         lastFrameTime = currentTime;
         
         CameraUniformBuffer cameraBuffer;
-        cameraBuffer.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        cameraBuffer.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         //some perspective projection
         cameraBuffer.proj = glm::perspective(glm::radians(45.0f),
             vkContext.swapChainExtent.width / (float)vkContext.swapChainExtent.height, 0.1f, 10.0f);
@@ -232,10 +287,74 @@ void MainLoop(GLFWwindow* window)
 
         uint32_t imageIndex;
         if (BeginFrame(vkContext, imageIndex)) {
+            VkCommandBuffer currentCommand = vkContext.commandBuffers[vkContext.currentFrame];
+            //begins the on-screen render pass
+            SetMark({ 0.2f, 0.8f, 0.1f }, "OnScreenRenderPass", currentCommand, vkContext);
+            std::array<VkClearValue, 2> onscreenClearValues{};
+            onscreenClearValues[0].color = { {1.0f, 0.0f, 0.0f, 1.0f} };
+            onscreenClearValues[1].depthStencil = { 1.0f, 0 };
+            BeginRenderPass(vkContext.mSwapchainRenderPass,
+                vkContext.swapChainFramebuffers[imageIndex],
+                currentCommand,
+                vkContext.swapChainExtent,
+                onscreenClearValues
+            );
+            helloForSwapChain->Bind(currentCommand);
             for (auto go : gGameObjects) {
-                DrawGameObject(go, cameraBuffer, vkContext);
+                helloForSwapChain->DrawGameObject(go, &cameraBuffer, 
+                    vkContext.commandBuffers[vkContext.currentFrame]);
             }
+            //end the on-screen render pass
+            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+            vkCmdEndRenderPass(currentCommand);
+            //begin the offscreen render pass to draw the objs for picking
+            SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", currentCommand, vkContext);
+            std::array<VkClearValue, 2> offscreenClearValues{};
+            offscreenClearValues[0].color = { {1.0f, 1.0f, 1.0f, 1.0f} };
+            offscreenClearValues[1].depthStencil = { 1.0f, 0 };
+            BeginRenderPass(vkContext.mRenderToTextureRenderPass,
+                vkContext.mRTTFramebuffer,
+                currentCommand,
+                vkContext.swapChainExtent,
+                offscreenClearValues
+            );
+            gpuPickerPipeline->Bind(currentCommand);
+            for (auto go : gGameObjects) {
+                gpuPickerPipeline->DrawGameObject(go, &cameraBuffer,
+                    currentCommand);
+            }
+            //end the offscreen render pass
+            vkCmdEndRenderPass(currentCommand);
+            //schedule the memory transfer. The cpu-side image won't be available just now
+            gpuPickerPipeline->ScheduleTransferImageFromGPUtoCPU(currentCommand,
+                rttManager->GetImage(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
+                WIDTH, HEIGHT);
+            //end the frame
+            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
             EndFrame(vkContext, imageIndex);
+            //now that everything is done, let us get the image as an array of bytes
+            std::vector<uint8_t> pixels = gpuPickerPipeline->GetImage();
+            uint32_t indexInPixels = round(gMousePos.y) * WIDTH * 4 +
+                round(gMousePos.x) * 4; //x4 because rgba
+            //reconstruct the ID
+            uint8_t r = pixels[indexInPixels + 0];
+            uint32_t R = r << 16;
+            uint8_t g = pixels[indexInPixels + 1];
+            uint32_t G = g << 8;
+            uint8_t b = pixels[indexInPixels + 2];
+            uint32_t reconstructedId = R + G + b;
+            //Find the game object and print to show that i can do picking.
+            entities::GameObject* pickedGO = nullptr;
+            for (auto i = 0; i < gGameObjects.size(); i++) {
+                if (gGameObjects[i]->mId == reconstructedId) {
+                    pickedGO = gGameObjects[i];
+                    break;
+                }
+            }
+            std::string goName = (pickedGO != nullptr ? pickedGO->mName : "n/d");
+            //the id became an rgb using the formula in idToColor at gpu_picker.frag. I need to revert            
+            printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
+                r,g,b, reconstructedId, goName.c_str());
         }
         
     }

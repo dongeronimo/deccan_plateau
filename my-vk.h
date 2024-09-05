@@ -7,7 +7,7 @@
 #include <map>
 #include <array>
 #include <glm/glm.hpp>
-
+#include <functional>
 namespace entities {
     class GameObject;
     class GpuTextureManager;
@@ -162,12 +162,19 @@ struct VkContext
     /// Table of swap chain framebuffers, one for each swap chain image
     /// </summary>
     std::vector<VkFramebuffer> swapChainFramebuffers;
+    VkFramebuffer mRTTFramebuffer = VK_NULL_HANDLE;
     /// <summary>
     /// My table of shader modules, they are thin wrappers around the .spv
     /// </summary>
     std::map<std::string, VkShaderModule> shaderModules;
-
-    VkRenderPass renderPass;
+    /// <summary>
+    /// This render pass renders to the swap chain. Its framebuffer is attached to the swapchain images
+    /// </summary>
+    VkRenderPass mSwapchainRenderPass = VK_NULL_HANDLE;
+    /// <summary>
+    /// This render pass is to render to a texture (offscreen rendering).
+    /// </summary>
+    VkRenderPass mRenderToTextureRenderPass = VK_NULL_HANDLE;
     VkPipelineLayout helloPipelineLayout;
     /// <summary>
     /// The pipeline object. At the moment I have only one material (shaders + fixed states configs) so
@@ -269,19 +276,26 @@ VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& avai
 
 void CreateImageViewForSwapChain(VkContext& ctx);
 
-void CreateGraphicsPipeline(VkContext& ctx);
 
 void LoadShaderModules(VkContext& ctx);
 
 void DestroyPipelineLayout(VkContext& ctx);
 
-void CreateRenderPasses(VkContext& ctx);
+void CreateSwapchainRenderPass(VkContext& ctx);
 
-void DestroyRenderPass(VkContext& ctx);
+void DestroySwapchainRenderPass(VkContext& ctx);
+
+void CreateRenderToTextureRenderPass(VkContext& ctx);
 
 void DestroyPipeline(VkContext& ctx);
 
-void CreateFramebuffers(VkContext& ctx, VkImageView depthImageViews);
+void CreateFramebuffersForRenderToTextureRenderPass(VkContext& ctx, 
+    VkImageView depthImageView, 
+    VkImageView colorImageView,
+    VkRenderPass renderPass,
+    uint32_t w, uint32_t h);
+
+void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthImageViews);
 
 void DestroyFramebuffers(VkContext& ctx);
 
@@ -296,10 +310,16 @@ void CreateSyncObjects(VkContext& ctx);
 void DestroySyncObjects(VkContext& ctx);
 
 void RecreateSwapChain(VkContext& ctx);
-
-//void CreateVertexBuffer(VkContext& ctx);
-
-//void CreateIndexBuffer(VkContext& ctx);
+/// <summary>
+/// Begin the render pass clearing both the color buffer and the depth buffer
+/// </summary>
+/// <param name="renderPass"></param>
+/// <param name="clearValues"></param>
+void BeginRenderPass(VkRenderPass renderPass,
+    VkFramebuffer framebuffer,
+    VkCommandBuffer commandBuffer,
+    VkExtent2D extent,
+    std::array<VkClearValue, 2> clearValues);
 /// <summary>
 /// Custom vkbuffer factory to encapsulate the buffer creation process and
 /// avoid repeating boring code
@@ -366,3 +386,6 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
 void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
 
+void CreateHelloPipeline(VkContext& ctx);
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx);

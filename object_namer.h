@@ -1,8 +1,11 @@
 #pragma once
 #include <vulkan/vulkan.h>
+#include <array>
+#include <string>
 //The gpu objects namimg api wants the object as uint64. All vk objects are opaque handlers so this macro here is ok
 //as long as you are in 64 bits.
 #define TO_HANDLE(o) reinterpret_cast<uint64_t>(o)
+struct VkContext;
 namespace vk
 {
     /// <summary>
@@ -23,5 +26,9 @@ namespace vk
         ~ObjectNamer() = default;
     };
 }
+void SetMark(std::array<float, 4> color,
+    std::string name,
+    VkCommandBuffer cmd,
+    VkContext ctx);
 //A more concise way of setting the name of vulkan objects, i want to write less
 #define SET_NAME(obj, type, name) vk::ObjectNamer::Instance().SetName(TO_HANDLE(obj), type, name);

@@ -434,7 +434,7 @@ VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char>& code
     return shaderModule;
 }
 
-void CreateGraphicsPipeline(VkContext& ctx)
+void CreateHelloPipeline(VkContext& ctx)
 {
     LoadShaderModules(ctx);
     //description of the shader stages
@@ -549,7 +549,7 @@ void CreateGraphicsPipeline(VkContext& ctx)
     //link the pipeline layout to the pipeline
     pipelineInfo.layout = ctx.helloPipelineLayout;
     //link the render pass to the pipeline
-    pipelineInfo.renderPass = ctx.renderPass;
+    pipelineInfo.renderPass = ctx.mSwapchainRenderPass;
     pipelineInfo.subpass = 0;
     if (vkCreateGraphicsPipelines(ctx.device, VK_NULL_HANDLE, 
         1,//number of pipelines 
@@ -579,7 +579,7 @@ void DestroyPipelineLayout(VkContext& ctx)
     vkDestroyPipelineLayout(ctx.device, ctx.helloPipelineLayout, nullptr);
 }
 
-void CreateRenderPasses(VkContext& ctx)
+void CreateSwapchainRenderPass(VkContext& ctx)
 {
     VkAttachmentDescription depthAttachment{};
     depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
@@ -635,15 +635,75 @@ void CreateRenderPasses(VkContext& ctx)
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.renderPass) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create render pass!");
+    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.mSwapchainRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create on screen render pass!");
     }
-    SET_NAME(ctx.renderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
+    SET_NAME(ctx.mSwapchainRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "main render pass");
 }
 
-void DestroyRenderPass(VkContext& ctx)
+void DestroySwapchainRenderPass(VkContext& ctx)
 {
-    vkDestroyRenderPass(ctx.device, ctx.renderPass, nullptr);
+    vkDestroyRenderPass(ctx.device, ctx.mSwapchainRenderPass, nullptr);
+}
+
+void CreateRenderToTextureRenderPass(VkContext& ctx)
+{
+    VkAttachmentDescription colorAttachment = {};
+    //VK_FORMAT_R8G8B8A8_SRGB
+    colorAttachment.format = VK_FORMAT_R8G8B8A8_UNORM;  // Format of the offscreen image
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;//slower but does not constrain me
+
+    VkAttachmentDescription depthAttachment = {};  // If depth is needed
+    depthAttachment.format = entities::DepthBufferManager::findDepthFormat(ctx.physicalDevice);
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorAttachmentRef = {};
+    colorAttachmentRef.attachment = 0;  // Index of the attachment in the render pass
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthAttachmentRef = {};
+    depthAttachmentRef.attachment = 1;  // Index of the depth attachment
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;  // The color attachment reference
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;  // The depth attachment reference
+
+    std::array<VkAttachmentDescription, 2> attachments = {
+    colorAttachment,
+    depthAttachment };
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = attachments.size();
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+
+    VkSubpassDependency dependency = {};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;  // Operations outside the render pass
+    dependency.dstSubpass = 0;  // The first (and only) subpass in the render pass
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.srcAccessMask = 0;  // No prior access needed
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.mRenderToTextureRenderPass) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create render-to-texture render pass!");
+    }
+    SET_NAME(ctx.mRenderToTextureRenderPass, VK_OBJECT_TYPE_RENDER_PASS, "render-to-texture render pass");
 }
 
 void DestroyPipeline(VkContext& ctx)
@@ -651,7 +711,33 @@ void DestroyPipeline(VkContext& ctx)
     vkDestroyPipeline(ctx.device, ctx.graphicsPipeline, nullptr);
 }
 
-void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
+void CreateFramebuffersForRenderToTextureRenderPass(VkContext& ctx, 
+    VkImageView depthImageView, 
+    VkImageView colorImageView, 
+    VkRenderPass renderPass,
+    uint32_t w, uint32_t h)
+{
+    std::vector<VkImageView> attachments = {
+            colorImageView,
+            depthImageView
+    };
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = attachments.size();
+    framebufferInfo.pAttachments = attachments.data();
+    framebufferInfo.width = w;
+    framebufferInfo.height = h;
+    framebufferInfo.layers = 1;
+    if (vkCreateFramebuffer(ctx.device, &framebufferInfo, nullptr,
+        &ctx.mRTTFramebuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create framebuffer!");
+    }
+    auto _name = Concatenate("mRTTFramebuffer");
+    SET_NAME(ctx.mRTTFramebuffer, VK_OBJECT_TYPE_FRAMEBUFFER, _name.c_str());
+}
+
+void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthImageView)
 {
     //one framebuffer for each image. ImageViews are the interface to the underlying images
     ctx.swapChainFramebuffers.resize(ctx.swapChainImageViews.size());
@@ -663,7 +749,7 @@ void CreateFramebuffers(VkContext& ctx, VkImageView depthImageView)
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = ctx.renderPass;
+        framebufferInfo.renderPass = ctx.mSwapchainRenderPass;
         framebufferInfo.attachmentCount = attachments.size();
         framebufferInfo.pAttachments = attachments.data();
         framebufferInfo.width = ctx.swapChainExtent.width;
@@ -717,6 +803,23 @@ void CreateCommandBuffer(VkContext& ctx)
     }
 }
 
+void BeginRenderPass(VkRenderPass renderPass,
+    VkFramebuffer framebuffer,
+    VkCommandBuffer commandBuffer,
+    VkExtent2D extent,
+    std::array<VkClearValue, 2> clearValues) {
+    //begin the render pass of the render pass
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = framebuffer;
+    renderPassInfo.renderArea.offset = { 0, 0 };
+    renderPassInfo.renderArea.extent = extent;
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
 bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     // check window area to deal with the degenerate case of the user dragging a border until
     // it becomes zero
@@ -753,22 +856,6 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
     if (vkBeginCommandBuffer(ctx.commandBuffers[ctx.currentFrame], &beginInfo) != VK_SUCCESS) {
         throw std::runtime_error("failed to begin recording command buffer!");
     }
-
-    //begin the render pass of the render pass
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = ctx.renderPass;
-    renderPassInfo.framebuffer = ctx.swapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = { 0, 0 };
-    renderPassInfo.renderArea.extent = ctx.swapChainExtent;
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-    clearValues[1].depthStencil = { 1.0f, 0 };
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-    vkCmdBeginRenderPass(ctx.commandBuffers[ctx.currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    //bind the pipeline
-    vkCmdBindPipeline(ctx.commandBuffers[ctx.currentFrame], VK_PIPELINE_BIND_POINT_GRAPHICS, ctx.graphicsPipeline);
     //viewport and scissors are dynamic
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -787,8 +874,7 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex) {
 }
 
 void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
-    //end the render .pass
-    vkCmdEndRenderPass(ctx.commandBuffers[ctx.currentFrame]);
+
     //end the command buffer
     if (vkEndCommandBuffer(ctx.commandBuffers[ctx.currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
@@ -797,11 +883,15 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     // it'll wait until the colours are written to the framebuffer
-    VkSemaphore waitSemaphores[] = { ctx.imageAvailableSemaphores[ctx.currentFrame] };
-    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
+    std::vector<VkSemaphore> waitSemaphores{
+        ctx.imageAvailableSemaphores[ctx.currentFrame]
+        /*,gpuPickerSemaphore*/
+    };
+    
+    VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    submitInfo.waitSemaphoreCount = waitSemaphores.size();
+    submitInfo.pWaitSemaphores = waitSemaphores.data();
+    submitInfo.pWaitDstStageMask = &waitStages;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &ctx.commandBuffers[ctx.currentFrame];
 
@@ -809,7 +899,8 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex) {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(ctx.graphicsQueue, 1, &submitInfo, ctx.inFlightFences[ctx.currentFrame]) != VK_SUCCESS) {
+    if (vkQueueSubmit(ctx.graphicsQueue, 1, 
+        &submitInfo, ctx.inFlightFences[ctx.currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
     //presentation
