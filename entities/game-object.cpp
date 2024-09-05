@@ -46,7 +46,7 @@ namespace entities {
     GameObject::GameObject(VkContext* ctx, const std::string& name, const Mesh* mesh):
         mName(name), mDevice(ctx->device),mMesh(mesh),
         mOrientation(glm::quat()), mPosition(glm::vec3(0,0,0)),
-        mId(GetNextGameObjectId())
+        mId(GetNextGameObjectId()), mPickerColor()
     {
         assert(mesh != nullptr);
         assert(gAvailableGameObjectsIds.size() == MAX_NUMBER_OF_GAME_OBJECTS);

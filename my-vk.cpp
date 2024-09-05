@@ -650,7 +650,7 @@ void CreateRenderToTextureRenderPass(VkContext& ctx)
 {
     VkAttachmentDescription colorAttachment = {};
     //VK_FORMAT_R8G8B8A8_SRGB
-    colorAttachment.format = VK_FORMAT_R8G8B8A8_SRGB;  // Format of the offscreen image
+    colorAttachment.format = VK_FORMAT_R8G8B8A8_UNORM;  // Format of the offscreen image
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;

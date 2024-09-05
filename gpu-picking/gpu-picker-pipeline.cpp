@@ -186,13 +186,14 @@ namespace GpuPicker {
             &dynamicOffset
         );
         //push the id to the shader using the push constant.
+        int id = go->mId;
         vkCmdPushConstants(
             cmdBuffer,                   // Command buffer
             pipelineLayout,                  // Pipeline layout
             VK_SHADER_STAGE_FRAGMENT_BIT,      // Shader stage(s)
             0,                               // Offset within the push constant block
             sizeof(int),                     // Size of the push constant data
-            &go->mId                           // Pointer to the data
+            &id // Pointer to the data
         );
         //Draw command
         vkCmdDrawIndexed(cmdBuffer,

@@ -72,6 +72,7 @@ namespace entities {
         }
         const Mesh* mMesh;
         const uint32_t mId;
+        const glm::vec3 mPickerColor;
         const std::string mName;
         const VkDevice mDevice;
         void CommitDataToObjectBuffer(uint32_t currentFrame);

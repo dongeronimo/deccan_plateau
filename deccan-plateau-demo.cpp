@@ -182,7 +182,7 @@ int main(int argc, char** argv)
         
     std::vector<entities::RenderToTextureTargetManager::RenderToTextureImageCreateData> renderToTextureImages = {
         {
-        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_SRGB, 
+        WIDTH, HEIGHT, VK_FORMAT_R8G8B8A8_UNORM ,
         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
         VK_IMAGE_USAGE_SAMPLED_BIT |
         VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 
@@ -219,7 +219,9 @@ int main(int argc, char** argv)
     bar->SetPosition(glm::vec3{ -1,0,0 });
     gGameObjects.push_back(foo);
     gGameObjects.push_back(bar);
-
+    entities::GameObject* woo = new entities::GameObject(&vkContext, "woo", monkeyMesh);
+    woo->SetPosition(glm::vec3{ 0,4,0 });
+    gGameObjects.push_back(woo);
     MainLoop(window);
 
     glfwDestroyWindow(window);
@@ -255,8 +257,15 @@ int main(int argc, char** argv)
     return 0;
 }
 
+static glm::vec2 gMousePos{ 0,0 };
+
 void MainLoop(GLFWwindow* window)
 {
+    glfwSetCursorPosCallback(window, [](GLFWwindow* window, double xpos, double ypos) {
+        gMousePos.x = xpos;
+        gMousePos.y = ypos;
+    });
+
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -269,7 +278,7 @@ void MainLoop(GLFWwindow* window)
         lastFrameTime = currentTime;
         
         CameraUniformBuffer cameraBuffer;
-        cameraBuffer.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        cameraBuffer.view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         //some perspective projection
         cameraBuffer.proj = glm::perspective(glm::radians(45.0f),
             vkContext.swapChainExtent.width / (float)vkContext.swapChainExtent.height, 0.1f, 10.0f);
@@ -323,10 +332,29 @@ void MainLoop(GLFWwindow* window)
             //end the frame
             vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
             EndFrame(vkContext, imageIndex);
+            //now that everything is done, let us get the image as an array of bytes
             std::vector<uint8_t> pixels = gpuPickerPipeline->GetImage();
-            //io::WriteImage("foo.bmp", WIDTH, HEIGHT, pixels);
-            //// int stbi_write_bmp(char const *filename, int w, int h, int comp, const void *data);
-
+            uint32_t indexInPixels = round(gMousePos.y) * WIDTH * 4 +
+                round(gMousePos.x) * 4; //x4 because rgba
+            //reconstruct the ID
+            uint8_t r = pixels[indexInPixels + 0];
+            uint32_t R = r << 16;
+            uint8_t g = pixels[indexInPixels + 1];
+            uint32_t G = g << 8;
+            uint8_t b = pixels[indexInPixels + 2];
+            uint32_t reconstructedId = R + G + b;
+            //Find the game object and print to show that i can do picking.
+            entities::GameObject* pickedGO = nullptr;
+            for (auto i = 0; i < gGameObjects.size(); i++) {
+                if (gGameObjects[i]->mId == reconstructedId) {
+                    pickedGO = gGameObjects[i];
+                    break;
+                }
+            }
+            std::string goName = (pickedGO != nullptr ? pickedGO->mName : "n/d");
+            //the id became an rgb using the formula in idToColor at gpu_picker.frag. I need to revert            
+            printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
+                r,g,b, reconstructedId, goName.c_str());
         }
         
     }
