@@ -81,6 +81,8 @@ add_executable(deccan-plateau-demo
     entities/mesh.h
     entities/image.cpp
     entities/image.h
+    entities/renderable.h
+    entities/renderable.cpp
     io/asset-paths.cpp
     io/asset-paths.h
     io/mesh-data.h

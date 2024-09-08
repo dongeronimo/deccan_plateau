@@ -17,6 +17,7 @@
 #include "concatenate.h"
 #include "entities/pipeline.h"
 #include "gpu-picking/gpu-picker-pipeline.h"
+#include "entities/renderable.h"
 
 std::map<std::string, entities::Mesh*> gMeshTable;
 entities::Pipeline* helloForSwapChain = nullptr;
@@ -80,7 +81,7 @@ void myFreeFunction(
 #endif
     _aligned_free(pMemory);
 }
-std::vector<entities::GameObject*> gGameObjects{};
+std::vector<entities::Renderable*> gRenderables{};
 
 int main(int argc, char** argv)
 {
@@ -213,23 +214,22 @@ int main(int argc, char** argv)
     entities::Mesh* cubeMesh = new entities::Mesh(*cubeMeshFile, &vkContext);
     gMeshTable.insert({ cubeMesh->mName, cubeMesh });
     //now that all vulkan infra is created we create the game objects
-    entities::GameObject* foo = new entities::GameObject(&vkContext, "foo", monkeyMesh);
+    entities::Renderable* foo = new entities::Renderable(&vkContext, "foo", monkeyMesh);
     foo->SetPosition(glm::vec3{ 1,0,0 });
-    entities::GameObject* bar = new entities::GameObject(&vkContext, "bar", cubeMesh);
+    entities::Renderable* bar = new entities::Renderable(&vkContext, "bar", cubeMesh);
     bar->SetPosition(glm::vec3{ -1,0,0 });
-    gGameObjects.push_back(foo);
-    gGameObjects.push_back(bar);
-    entities::GameObject* woo = new entities::GameObject(&vkContext, "woo", monkeyMesh);
+    gRenderables.push_back(foo);
+    gRenderables.push_back(bar);
+    entities::Renderable* woo = new entities::Renderable(&vkContext, "woo", monkeyMesh);
     woo->SetPosition(glm::vec3{ 0,4,0 });
-    gGameObjects.push_back(woo);
+    gRenderables.push_back(woo);
     MainLoop(window);
 
     glfwDestroyWindow(window);
-
-    delete brickImageData;
-    delete gpuTextureManager;
     //cleanup
     vkDeviceWaitIdle(vkContext.device);
+    delete brickImageData;
+    delete gpuTextureManager;
     DestroyDescriptorSets(vkContext);
     DestroyPipeline(vkContext);
     DestroyPipelineLayout(vkContext);
@@ -300,8 +300,8 @@ void MainLoop(GLFWwindow* window)
                 onscreenClearValues
             );
             helloForSwapChain->Bind(currentCommand);
-            for (auto go : gGameObjects) {
-                helloForSwapChain->DrawGameObject(go, &cameraBuffer, 
+            for (auto go : gRenderables) {
+                helloForSwapChain->DrawRenderable(go, &cameraBuffer, 
                     vkContext.commandBuffers[vkContext.currentFrame]);
             }
             //end the on-screen render pass
@@ -319,8 +319,8 @@ void MainLoop(GLFWwindow* window)
                 offscreenClearValues
             );
             gpuPickerPipeline->Bind(currentCommand);
-            for (auto go : gGameObjects) {
-                gpuPickerPipeline->DrawGameObject(go, &cameraBuffer,
+            for (auto go : gRenderables) {
+                gpuPickerPipeline->DrawRenderable(go, &cameraBuffer,
                     currentCommand);
             }
             //end the offscreen render pass
@@ -345,9 +345,9 @@ void MainLoop(GLFWwindow* window)
             uint32_t reconstructedId = R + G + b;
             //Find the game object and print to show that i can do picking.
             entities::GameObject* pickedGO = nullptr;
-            for (auto i = 0; i < gGameObjects.size(); i++) {
-                if (gGameObjects[i]->mId == reconstructedId) {
-                    pickedGO = gGameObjects[i];
+            for (auto i = 0; i < gRenderables.size(); i++) {
+                if (gRenderables[i]->mId == reconstructedId) {
+                    pickedGO = gRenderables[i];
                     break;
                 }
             }

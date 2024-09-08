@@ -5,7 +5,7 @@
 struct VkContext;
 struct CameraUniformBuffer;
 namespace entities {
-    class GameObject;
+    class Renderable;
 
     class Pipeline {
     public:
@@ -29,7 +29,7 @@ namespace entities {
         VkPipeline GetPipeline()const { return pipeline; }
         VkPipelineLayout GetPipelineLayout()const { return pipelineLayout; }
         void Bind(VkCommandBuffer cmd);
-        void DrawGameObject(GameObject* obj, CameraUniformBuffer* camera,
+        void DrawRenderable(Renderable* obj, CameraUniformBuffer* camera,
             VkCommandBuffer cmd);
     private:
         VkShaderModule vertexShaderModule = VK_NULL_HANDLE;

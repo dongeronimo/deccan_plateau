@@ -4,7 +4,7 @@
 #include "concatenate.h"
 #include "my-vk.h"
 #include "object_namer.h"
-#include "game-object.h"
+#include "renderable.h"
 #include "mesh.h"
 namespace entities {
     VkShaderModule Pipeline::LoadShaderModule(VkDevice device, const std::string& name)
@@ -180,7 +180,7 @@ namespace entities {
         vkCmdBindPipeline(cmd,
             VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     }
-    void Pipeline::DrawGameObject(GameObject* go, 
+    void Pipeline::DrawRenderable(Renderable* go,
         CameraUniformBuffer* camera,
         VkCommandBuffer cmdBuffer)
     {

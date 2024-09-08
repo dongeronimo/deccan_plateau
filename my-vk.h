@@ -384,8 +384,6 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex);
 /// </summary>
 void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
-void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
-
 void CreateHelloPipeline(VkContext& ctx);
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx);

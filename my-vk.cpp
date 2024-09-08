@@ -941,61 +941,6 @@ void SetMark(std::array<float, 4> color,
     ctx.vkCmdDebugMarkerBeginEXT(cmd, &markerInfo);
 }
 
-void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx)
-{
-    VkCommandBuffer cmdBuffer = ctx.commandBuffers[ctx.currentFrame];
-    SetMark({ 1.0f, 0.0f, 0.0f, 1.0f }, go->mName, cmdBuffer, ctx);
-    //copies camera data to gpu
-    memcpy(ctx.helloCameraUniformBufferAddress[ctx.currentFrame], &camera, sizeof(camera));
-    //copies object data to gpu
-    go->CommitDataToObjectBuffer(ctx.currentFrame);
-    go->mMesh->Bind(cmdBuffer);
-    //bind the camera descriptor set
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,   // We assume it's a graphics pipeline
-        ctx.helloPipelineLayout,                    // The pipeline layout that matches the shader's descriptor set layouts
-        0,                                 // firstSet, which is the index of the first descriptor set (set = 0)
-        1,                                 // descriptorSetCount, number of descriptor sets to bind
-        &ctx.helloCameraDescriptorSets[ctx.currentFrame],              // Pointer to the array of descriptor sets (only one in this case)
-        0,                                 // dynamicOffsetCount, assuming no dynamic offsets
-        nullptr                            // pDynamicOffsets, assuming no dynamic offsets
-    );
-    //bind the object-specific descriptor set
-    // Bind the object-specific descriptor set (set = 1)
-    VkDescriptorSet objectDescriptorSet = go->GetDescriptorSet(ctx.currentFrame);
-    uint32_t dynamicOffset = go->DynamicOffset(ctx.currentFrame);
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        ctx.helloPipelineLayout,
-        1,                                 // firstSet, index of the first descriptor set (set = 1)
-        1,                                 // descriptorSetCount, number of descriptor sets to bind
-        &objectDescriptorSet,              // Pointer to the array of descriptor sets (only one in this case)
-        1,
-        &dynamicOffset
-    );
-    //bind the sampler
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        ctx.helloPipelineLayout,
-        2, //third set
-        1,
-        &ctx.helloSamplerDescriptorSets[ctx.currentFrame],
-        0,
-        nullptr
-    );
-    //Draw command
-    vkCmdDrawIndexed(cmdBuffer,
-        static_cast<uint32_t>(go->mMesh->NumberOfIndices()), 
-        1, 
-        0, 
-        0, 
-        0);
-    ctx.vkCmdDebugMarkerEndEXT(cmdBuffer);
-}
-
 void CreateSyncObjects(VkContext& ctx)
 {
     ctx.imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);

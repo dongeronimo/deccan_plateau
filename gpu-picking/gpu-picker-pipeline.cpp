@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <concatenate.h>
 #include <object_namer.h>
-#include "entities/game-object.h"
+#include "entities/renderable.h"
 #include "entities/mesh.h"
 static VkBuffer buffer = VK_NULL_HANDLE;
 static VkDeviceMemory bufferMemory = VK_NULL_HANDLE;
@@ -152,7 +152,7 @@ namespace GpuPicker {
             VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     }
 
-    void GpuPickerPipeline::DrawGameObject(entities::GameObject* go, CameraUniformBuffer* camera, VkCommandBuffer cmdBuffer)
+    void GpuPickerPipeline::DrawRenderable(entities::Renderable* go, CameraUniformBuffer* camera, VkCommandBuffer cmdBuffer)
     {
         SetMark({ 1.0f, 0.8f, 1.0f, 1.0f }, go->mName, cmdBuffer, *mCtx);
         //copies camera data to gpu

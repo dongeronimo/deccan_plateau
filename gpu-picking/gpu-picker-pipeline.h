@@ -5,7 +5,7 @@
 struct VkContext;
 struct CameraUniformBuffer;
 namespace entities {
-    class GameObject;
+    class Renderable;
 }
 namespace GpuPicker {
     const std::string GPU_PICKER_RENDER_PASS_TARGET = "gpuPickerRenderPassTargetImage";
@@ -22,7 +22,7 @@ namespace GpuPicker {
         VkPipeline GetPipeline()const { return pipeline; }
         VkPipelineLayout GetPipelineLayout()const { return pipelineLayout; }
         void Bind(VkCommandBuffer cmd);
-        void DrawGameObject(entities::GameObject* obj, CameraUniformBuffer* camera,
+        void DrawRenderable(entities::Renderable* obj, CameraUniformBuffer* camera,
             VkCommandBuffer cmd);
 
         void ScheduleTransferImageFromGPUtoCPU(VkCommandBuffer cmd,
