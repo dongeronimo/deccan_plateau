@@ -86,6 +86,14 @@ void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t 
 }
 
 namespace entities {
+    RenderToTextureTargetManager::~RenderToTextureTargetManager()
+    {
+        vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
+        for (auto& kv : mImageTable) {
+            vkDestroyImage(mCtx->device, kv.second.mImage, nullptr);
+            vkDestroyImageView(mCtx->device, kv.second.mImageView, nullptr);
+        }
+    }
     RenderToTextureTargetManager::RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> images) :
         mCtx(ctx)
     {

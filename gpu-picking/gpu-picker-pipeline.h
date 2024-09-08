@@ -16,6 +16,7 @@ namespace GpuPicker {
             std::vector<VkDescriptorSetLayout> descriptorSetLayouts,
             const std::string& name
         );
+        ~GpuPickerPipeline();
         const std::string mName;
         const VkContext* mCtx;
         const VkRenderPass mRenderPass;
@@ -29,12 +30,10 @@ namespace GpuPicker {
             VkImage gpuImage, uint32_t w, uint32_t h);
         std::vector<uint8_t> GetImage();
     private:
-
-
         VkShaderModule vertexShaderModule = VK_NULL_HANDLE;
         VkShaderModule fragmentShaderModule = VK_NULL_HANDLE;
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         VkPipeline pipeline;
-        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;//remember, i don't own these.
     };
 }

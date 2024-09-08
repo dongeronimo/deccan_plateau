@@ -207,7 +207,9 @@ int main(int argc, char** argv)
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
 
-
+    for (auto& x : depthBuffersForMainRenderPass) {
+        
+    }
     //create the mesh
     entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
     gMeshTable.insert({ monkeyMesh->mName, monkeyMesh });
@@ -228,6 +230,9 @@ int main(int argc, char** argv)
     glfwDestroyWindow(window);
     //cleanup
     vkDeviceWaitIdle(vkContext.device);
+    delete gpuPickerPipeline;
+    delete helloForSwapChain;
+    delete rttManager;
     delete brickImageData;
     delete gpuTextureManager;
     DestroyDescriptorSets(vkContext);
@@ -242,12 +247,13 @@ int main(int argc, char** argv)
 
     delete foo;
     delete bar;
+    delete woo;
     entities::GameObjectUniformBufferPool::Destroy();
     for (auto& kv : gMeshTable) {
         delete kv.second;
         kv.second = nullptr;
     }
-
+    delete depthBufferManager;
     vkContext.DestroyCameraBuffer(vkContext);
     DestroyLogicalDevice(vkContext);
     DestroySurface(vkContext);
@@ -353,8 +359,8 @@ void MainLoop(GLFWwindow* window)
             }
             std::string goName = (pickedGO != nullptr ? pickedGO->mName : "n/d");
             //the id became an rgb using the formula in idToColor at gpu_picker.frag. I need to revert            
-            printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
-                r,g,b, reconstructedId, goName.c_str());
+            //printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
+            //    r,g,b, reconstructedId, goName.c_str());
         }
         
     }

@@ -46,6 +46,7 @@ namespace entities {
             VkImageUsageFlags usage;
             std::string name;
         };
+        ~RenderToTextureTargetManager();
         RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> imgs);
         VkImageView GetImageView(const std::string& name)const;
         VkImage GetImage(const std::string& name)const;

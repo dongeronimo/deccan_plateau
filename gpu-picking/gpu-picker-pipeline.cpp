@@ -146,6 +146,17 @@ namespace GpuPicker {
         vkDestroyShaderModule(ctx->device, fragmentShaderModule, nullptr);
     }
 
+    GpuPickerPipeline::~GpuPickerPipeline()
+    {
+        vkDestroyPipeline(mCtx->device, pipeline, nullptr);
+        //for (auto dsl : descriptorSetLayouts) {
+        //    vkDestroyDescriptorSetLayout(mCtx->device, dsl, nullptr);
+        //}
+        vkDestroyPipelineLayout(mCtx->device, pipelineLayout, nullptr);
+        vkFreeMemory(mCtx->device, bufferMemory, nullptr);
+        vkDestroyBuffer(mCtx->device, buffer, nullptr);
+    }
+
     void GpuPickerPipeline::Bind(VkCommandBuffer cmd)
     {
         vkCmdBindPipeline(cmd,
