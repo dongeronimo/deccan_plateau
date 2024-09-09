@@ -18,6 +18,7 @@
 #include "entities/pipeline.h"
 #include "gpu-picking/gpu-picker-pipeline.h"
 #include "entities/renderable.h"
+#include "vk/my-instance.h"
 
 std::map<std::string, entities::Mesh*> gMeshTable;
 entities::Pipeline* helloForSwapChain = nullptr;
@@ -105,15 +106,19 @@ int main(int argc, char** argv)
         printf("  %s\n", ext.extensionName);
     }
     ///Vulkan initialization
-    vkContext.window = window;
-    vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
-    vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
-    vkContext.customAllocators.myReallocationFunction = myReallocationFunction;
-    vkContext.customAllocators.myFreeFunction = myFreeFunction;
-    CreateVkInstance(vkContext.instance, vkContext.customAllocators);
-    SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
-    CreateSurface(vkContext, window);
-    SelectPhysicalDevice(vkContext);
+    
+    myvk::Instance* instance = new myvk::Instance(window);
+    instance->ChoosePhysicalDevice(VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, myvk::YES);
+
+    //vkContext.window = window;
+    //vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
+    //vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
+    //vkContext.customAllocators.myReallocationFunction = myReallocationFunction;
+    //vkContext.customAllocators.myFreeFunction = myFreeFunction;
+    //CreateVkInstance(vkContext.instance, vkContext.customAllocators);
+    //SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
+    //CreateSurface(vkContext, window);
+    //SelectPhysicalDevice(vkContext);
     CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
     //it's best to create the namer as soon as possible.
     vk::ObjectNamer::Instance().Init(vkContext.device);

@@ -90,7 +90,7 @@ struct VkContext
     PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
     PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
 
-    GLFWwindow* window;
+    GLFWwindow* window = nullptr;
     /// <summary>
     /// TODO: Allow for many custom allocators, one for each situation
     /// Holds the function pointer for the custom allocator callbacks
@@ -100,11 +100,11 @@ struct VkContext
     /// The Vk library instance, the first thing to be created and the last to be
     /// destroyed. Thru it we get the physical devices.
     /// </summary>
-    VkInstance instance;
+    VkInstance instance = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Debug messenger obj
     /// </summary>
-    VkDebugUtilsMessengerEXT debugMessenger;
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// The physical device: the representation of the physical gpu
     /// </summary>
@@ -129,7 +129,7 @@ struct VkContext
     /// <summary>
     /// THe surface is the glue between the window system and vk.
     /// </summary>
-    VkSurfaceKHR surface;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Presentation command queue. Can be equal to graphicsQueue.
     /// </summary>
