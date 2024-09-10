@@ -98,6 +98,8 @@ add_executable(deccan-plateau-demo
     vk/my-instance.cpp
     vk/my-device.cpp
     vk/my-device.h
+    ui/ui-pipeline.h
+    ui/ui-pipeline.cpp
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers
