@@ -6,6 +6,7 @@
 #include "object_namer.h"
 #include "renderable.h"
 #include "mesh.h"
+#include "vk/my-device.h"
 namespace entities {
     VkShaderModule Pipeline::LoadShaderModule(VkDevice device, const std::string& name)
     {
@@ -37,8 +38,8 @@ namespace entities {
         mCtx(ctx),mRenderPass(renderPass),mName(name), descriptorSetLayouts(descriptorSetLayouts)
     {
         //load the shader modules
-        vertexShaderModule = LoadShaderModule(ctx->device, "hello_shader_vert.spv");
-        fragmentShaderModule = LoadShaderModule(ctx->device, "hello_shader_frag.spv");
+        vertexShaderModule = LoadShaderModule(myvk::Device::gDevice->GetDevice(), "hello_shader_vert.spv");
+        fragmentShaderModule = LoadShaderModule(myvk::Device::gDevice->GetDevice(), "hello_shader_frag.spv");
         //description of the shader stages
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages = CreateShaderStageInfoForVertexAndFragment(
             vertexShaderModule, fragmentShaderModule);
@@ -102,7 +103,7 @@ namespace entities {
         //we use no push constants for now
         pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
         pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
-        if (vkCreatePipelineLayout(ctx->device, &pipelineLayoutInfo,
+        if (vkCreatePipelineLayout(myvk::Device::gDevice->GetDevice(), &pipelineLayoutInfo,
             nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -124,7 +125,7 @@ namespace entities {
         //the actual pipeline
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = shaderStages.size();
+        pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
         pipelineInfo.pStages = shaderStages.data();    //add the shader stages
         //set the states
         pipelineInfo.pVertexInputState = &vertexInputInfo;
@@ -140,7 +141,7 @@ namespace entities {
         //link the render pass to the pipeline
         pipelineInfo.renderPass = mRenderPass;
         pipelineInfo.subpass = 0;
-        if (vkCreateGraphicsPipelines(ctx->device, VK_NULL_HANDLE,
+        if (vkCreateGraphicsPipelines(myvk::Device::gDevice->GetDevice(), VK_NULL_HANDLE,
             1,//number of pipelines 
             &pipelineInfo, //list of pipelines (only one) 
             nullptr, &pipeline) != VK_SUCCESS) {
@@ -148,8 +149,8 @@ namespace entities {
         }
         SET_NAME(pipeline, VK_OBJECT_TYPE_PIPELINE, name.c_str());
         //the shader modules are no longer necessary by now.
-        vkDestroyShaderModule(ctx->device, vertexShaderModule, nullptr);
-        vkDestroyShaderModule(ctx->device, fragmentShaderModule, nullptr);
+        vkDestroyShaderModule(myvk::Device::gDevice->GetDevice(), vertexShaderModule, nullptr);
+        vkDestroyShaderModule(myvk::Device::gDevice->GetDevice(), fragmentShaderModule, nullptr);
     }
     std::vector<VkPipelineShaderStageCreateInfo> Pipeline::CreateShaderStageInfoForVertexAndFragment(VkShaderModule vs, VkShaderModule fs)
     {
@@ -171,8 +172,8 @@ namespace entities {
     }
     Pipeline::~Pipeline()
     {
-        vkDestroyPipeline(mCtx->device, pipeline, nullptr);
-        vkDestroyPipelineLayout(mCtx->device, pipelineLayout, nullptr);
+        vkDestroyPipeline(myvk::Device::gDevice->GetDevice(), pipeline, nullptr);
+        vkDestroyPipelineLayout(myvk::Device::gDevice->GetDevice(), pipelineLayout, nullptr);
  
     }
     void Pipeline::Bind(VkCommandBuffer cmd)
@@ -184,6 +185,10 @@ namespace entities {
         CameraUniformBuffer* camera,
         VkCommandBuffer cmdBuffer)
     {
+        static PFN_vkCmdDebugMarkerEndEXT __vkCmdDebugMarkerEndEXT;
+        if (__vkCmdDebugMarkerEndEXT == VK_NULL_HANDLE) {
+            __vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(myvk::Device::gDevice->GetDevice(), "vkCmdDebugMarkerEndEXT");
+        }
         SetMark({ 1.0f, 0.0f, 0.0f, 1.0f }, go->mName, cmdBuffer, *mCtx);
         //copies camera data to gpu
         memcpy(mCtx->helloCameraUniformBufferAddress[mCtx->currentFrame], camera, sizeof(CameraUniformBuffer));
@@ -233,6 +238,6 @@ namespace entities {
             0,
             0,
             0);
-        mCtx->vkCmdDebugMarkerEndEXT(cmdBuffer);
+        __vkCmdDebugMarkerEndEXT(cmdBuffer);
     }
 }

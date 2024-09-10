@@ -86,11 +86,11 @@ std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions();
 /// </summary>
 struct VkContext
 {
-    PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBeginEXT = nullptr;
-    PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
-    PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
+    //PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBeginEXT = nullptr;
+    //PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
+    //PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
 
-    GLFWwindow* window = nullptr;
+    GLFWwindow* window = nullptr;//TODO: kill me
     /// <summary>
     /// TODO: Allow for many custom allocators, one for each situation
     /// Holds the function pointer for the custom allocator callbacks
@@ -120,20 +120,20 @@ struct VkContext
     /// <summary>
     /// The logical device, that we use to interact with the gpu
     /// </summary>
-    VkDevice device;
+    //VkDevice device = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Graphics command queue. Can be the equal to presentQueue, which means that the queue supports
     /// both categories of commands
     /// </summary>
-    VkQueue graphicsQueue;
+    //VkQueue graphicsQueue = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// THe surface is the glue between the window system and vk.
     /// </summary>
-    VkSurfaceKHR surface = VK_NULL_HANDLE;//TODO kill me
+    //VkSurfaceKHR surface = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Presentation command queue. Can be equal to graphicsQueue.
     /// </summary>
-    VkQueue presentQueue;
+    //VkQueue presentQueue = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// size of the swap chain images - normally will be the size of the window
     /// </summary>
@@ -182,7 +182,7 @@ struct VkContext
     /// they are static and i can't change their shaders and fixed function properties once created.
     /// </summary>
     VkPipeline graphicsPipeline;
-    VkCommandPool commandPool;
+    //VkCommandPool commandPool; //TODO: kill me
     /// <summary>
     /// Table of command buffers, one for each frame in flight (not one for each swap chain image)
     /// </summary>
@@ -254,17 +254,17 @@ void DestroyVkInstance(VkInstance instance);
 /// <summary>
 void DestroyVkInstance(VkInstance instance, const CustomAllocators& allocators);
 
-void SelectPhysicalDevice(VkContext& ctx);
+//void SelectPhysicalDevice(VkContext& ctx);
  
 std::optional<uint32_t> FindGraphicsQueueFamily(VkPhysicalDevice device);
 
-void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector<const char*> validationLayers);
+//void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector<const char*> validationLayers);
 
-void DestroyLogicalDevice(VkContext& ctx);
+//void DestroyLogicalDevice(VkContext& ctx);
 
-void CreateSurface(VkContext& ctx, GLFWwindow* window);
+//void CreateSurface(VkContext& ctx, GLFWwindow* window);
 
-void DestroySurface(VkContext& ctx);
+//void DestroySurface(VkContext& ctx);
 
 std::optional<uint32_t> FindPresentationQueueFamily(VkPhysicalDevice device, VkSurfaceKHR surface);
 
@@ -299,9 +299,9 @@ void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthIm
 
 void DestroyFramebuffers(VkContext& ctx);
 
-void CreateCommandPool(VkContext& ctx);
+//void CreateCommandPool(VkContext& ctx);
 
-void DestroyCommandPool(VkContext& ctx);
+//void DestroyCommandPool(VkContext& ctx);
 
 void CreateCommandBuffer(VkContext& ctx);
 
@@ -334,7 +334,11 @@ void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags properties, VkBuffer& buffer, 
     VkDeviceMemory& bufferMemory, VkContext& ctx);
 
-void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkContext& ctx);
+void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties, VkBuffer& buffer,
+    VkDeviceMemory& bufferMemory, VkDevice device);
+
+void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 #pragma region hello_pipeline
 /// <summary>
 /// Because hello shader has 2 sets i need to create a descriptor set layout for each
@@ -387,3 +391,5 @@ void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 void CreateHelloPipeline(VkContext& ctx);
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx);
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

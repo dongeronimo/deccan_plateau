@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include "object_namer.h"
 #include "commandBufferUtils.h"
+#include "vk/my-device.h"
+#include "vk/my-instance.h"
 #define _256mb 256 * 1024 * 1024
 static VkBuffer gMeshBuffer = VK_NULL_HANDLE;
 static VkDeviceMemory gMeshMemory = VK_NULL_HANDLE;
@@ -10,7 +12,7 @@ uint32_t meshCounter = 0;
 uintptr_t gMemoryCursor = 0;
 uint32_t _findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx) {
     VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(ctx.physicalDevice, &memProperties);
+    vkGetPhysicalDeviceMemoryProperties(myvk::Instance::gInstance->GetPhysicalDevice(), &memProperties);
 
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -57,13 +59,13 @@ namespace entities {
     Mesh::~Mesh()
     {
         assert(mCtx != nullptr && 
-            mCtx->device != VK_NULL_HANDLE && 
+            myvk::Device::gDevice->GetDevice() != VK_NULL_HANDLE && 
             gMeshBuffer != VK_NULL_HANDLE && 
             gMeshMemory != VK_NULL_HANDLE);
         meshCounter--;
         if (meshCounter == 0) {
-            vkFreeMemory(mCtx->device, gMeshMemory, nullptr);
-            vkDestroyBuffer(mCtx->device, gMeshBuffer, nullptr);
+            vkFreeMemory(myvk::Device::gDevice->GetDevice(), gMeshMemory, nullptr);
+            vkDestroyBuffer(myvk::Device::gDevice->GetDevice(), gMeshBuffer, nullptr);
         }
     }
     void Mesh::Bind(VkCommandBuffer cmd) const
@@ -75,10 +77,11 @@ namespace entities {
     }
     void Mesh::CtorStartAssertions()
     {
+        
         assert(mCtx != nullptr);
-        assert(mCtx->device != VK_NULL_HANDLE);
-        assert(mCtx->commandPool != VK_NULL_HANDLE);
-        assert(mCtx->graphicsQueue != VK_NULL_HANDLE);
+        assert(myvk::Device::gDevice->GetDevice() != VK_NULL_HANDLE);
+        assert(myvk::Device::gDevice->GetCommandPool() != VK_NULL_HANDLE);
+        assert(myvk::Device::gDevice->GetGraphicsQueue() != VK_NULL_HANDLE);
     }
     void Mesh::CtorInitGlobalMeshBuffer(VkContext* ctx)
     {
@@ -95,23 +98,23 @@ namespace entities {
                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
             vbBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             //create the buffer
-            if (vkCreateBuffer(mCtx->device, &vbBufferInfo, nullptr, &gMeshBuffer) != VK_SUCCESS) {
+            if (vkCreateBuffer(myvk::Device::gDevice->GetDevice(), &vbBufferInfo, nullptr, &gMeshBuffer) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create buffer!");
             }
             //the memory the buffer will require, not necessarely equals to the size of the data being stored
             //in it.
             VkMemoryRequirements memRequirements;
-            vkGetBufferMemoryRequirements(mCtx->device, gMeshBuffer, &memRequirements);
+            vkGetBufferMemoryRequirements(myvk::Device::gDevice->GetDevice(), gMeshBuffer, &memRequirements);
             VkMemoryAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memRequirements.size;
             allocInfo.memoryTypeIndex = _findMemoryType(memRequirements.memoryTypeBits,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, *mCtx);
             //Allocate the memory
-            if (vkAllocateMemory(mCtx->device, &allocInfo, nullptr, &gMeshMemory) != VK_SUCCESS) {
+            if (vkAllocateMemory(myvk::Device::gDevice->GetDevice(), &allocInfo, nullptr, &gMeshMemory) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate buffer memory!");
             }
-            vkBindBufferMemory(mCtx->device, gMeshBuffer, gMeshMemory, 0);
+            vkBindBufferMemory(myvk::Device::gDevice->GetDevice(), gMeshBuffer, gMeshMemory, 0);
             SET_NAME(gMeshBuffer, VK_OBJECT_TYPE_BUFFER, "Global Mesh Buffer");
             SET_NAME(gMeshMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "Global Mesh Memory");
         }
@@ -129,9 +132,9 @@ namespace entities {
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, //memory is visibe to the cpu and gpu
             vertexStagingBuffer, vertexStagingBufferMemory, *ctx);
         void* vertexStagingBufferAddress;
-        vkMapMemory(ctx->device, vertexStagingBufferMemory, 0, vertexBufferSize, 0, &vertexStagingBufferAddress);
+        vkMapMemory(myvk::Device::gDevice->GetDevice(), vertexStagingBufferMemory, 0, vertexBufferSize, 0, &vertexStagingBufferAddress);
         memcpy(vertexStagingBufferAddress, vertexes.data(), (size_t)vertexBufferSize);
-        vkUnmapMemory(ctx->device, vertexStagingBufferMemory);
+        vkUnmapMemory(myvk::Device::gDevice->GetDevice(), vertexStagingBufferMemory);
         //2)Create a local buffer for the index buffer
         VkDeviceSize indexBufferSize = sizeof(indices[0]) * indices.size();
         VkBuffer indexStagingBuffer;
@@ -141,13 +144,13 @@ namespace entities {
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, //memory is visibe to the cpu and gpu
             indexStagingBuffer, indexStagingBufferMemory, *ctx);
         void* indexStagingBufferAddress;
-        vkMapMemory(ctx->device, indexStagingBufferMemory, 0, indexBufferSize, 0, &indexStagingBufferAddress);
+        vkMapMemory(myvk::Device::gDevice->GetDevice(), indexStagingBufferMemory, 0, indexBufferSize, 0, &indexStagingBufferAddress);
         memcpy(indexStagingBufferAddress, indices.data(), (size_t)indexBufferSize);
-        vkUnmapMemory(ctx->device, indexStagingBufferMemory);
+        vkUnmapMemory(myvk::Device::gDevice->GetDevice(), indexStagingBufferMemory);
         assert(gMemoryCursor + vertexBufferSize + indexBufferSize < _256mb); //Is there enough space?
         //3)Copy the vertex and index buffer to the main buffer, increase the cursor
-        VkCommandBuffer vbCopyCommandBuffer = CreateCommandBuffer(ctx->commandPool,
-            ctx->device, "vertex buffer copy command buffer");
+        VkCommandBuffer vbCopyCommandBuffer = CreateCommandBuffer(myvk::Device::gDevice->GetCommandPool(),
+            myvk::Device::gDevice->GetDevice(), "vertex buffer copy command buffer");
         BeginRecordingCommands(vbCopyCommandBuffer);
         CopyBuffer(0, gMemoryCursor, vertexBufferSize, vbCopyCommandBuffer, vertexStagingBuffer, gMeshBuffer);
         mVertexesOffset = gMemoryCursor;
@@ -156,12 +159,13 @@ namespace entities {
         mIndexesOffset = gMemoryCursor;
         gMemoryCursor += indexBufferSize;
         //4)Finish execution
-        SubmitAndFinishCommands(vbCopyCommandBuffer, ctx->graphicsQueue, ctx->device, ctx->commandPool);
-        mNumberOfIndices = indices.size();
+        SubmitAndFinishCommands(vbCopyCommandBuffer, myvk::Device::gDevice->GetGraphicsQueue(), myvk::Device::gDevice->GetDevice(), 
+            myvk::Device::gDevice->GetCommandPool());
+        mNumberOfIndices = static_cast<uint16_t>(indices.size());
 
-        vkDestroyBuffer(ctx->device, vertexStagingBuffer, nullptr);
-        vkDestroyBuffer(ctx->device, indexStagingBuffer, nullptr);
-        vkFreeMemory(ctx->device, vertexStagingBufferMemory, nullptr);
-        vkFreeMemory(ctx->device, indexStagingBufferMemory, nullptr);
+        vkDestroyBuffer(myvk::Device::gDevice->GetDevice(), vertexStagingBuffer, nullptr);
+        vkDestroyBuffer(myvk::Device::gDevice->GetDevice(), indexStagingBuffer, nullptr);
+        vkFreeMemory(myvk::Device::gDevice->GetDevice(), vertexStagingBufferMemory, nullptr);
+        vkFreeMemory(myvk::Device::gDevice->GetDevice(), indexStagingBufferMemory, nullptr);
     }
 }

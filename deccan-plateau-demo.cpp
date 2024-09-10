@@ -19,6 +19,7 @@
 #include "gpu-picking/gpu-picker-pipeline.h"
 #include "entities/renderable.h"
 #include "vk/my-instance.h"
+#include "vk/my-device.h"
 
 std::map<std::string, entities::Mesh*> gMeshTable;
 entities::Pipeline* helloForSwapChain = nullptr;
@@ -109,7 +110,14 @@ int main(int argc, char** argv)
     
     myvk::Instance* instance = new myvk::Instance(window);
     instance->ChoosePhysicalDevice(VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, myvk::YES);
-
+    myvk::Device* device = new myvk::Device(instance->GetPhysicalDevice(),
+        instance->GetInstance(), instance->GetSurface(), GetValidationLayerNames());
+    CreateSwapChain(vkContext);
+    CreateImageViewForSwapChain(vkContext);
+    //Crete the global descriptor sets, they are used by many pipelines.
+    CreateDescriptorSetLayoutForCamera(vkContext);
+    CreateDescriptorSetLayoutForObject(vkContext);
+    CreateDescriptorSetLayoutForSampler(vkContext);
     //vkContext.window = window;
     //vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
     //vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
@@ -119,20 +127,9 @@ int main(int argc, char** argv)
     //SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
     //CreateSurface(vkContext, window);
     //SelectPhysicalDevice(vkContext);
-    CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
+    //CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
     //it's best to create the namer as soon as possible.
-    vk::ObjectNamer::Instance().Init(vkContext.device);
-    CreateCommandPool(vkContext);
-
-
-
-    CreateSwapChain(vkContext);
-    CreateImageViewForSwapChain(vkContext);
-
-    //the hello pipeline needs these descriptors.
-    CreateDescriptorSetLayoutForCamera(vkContext);
-    CreateDescriptorSetLayoutForObject(vkContext);
-    CreateDescriptorSetLayoutForSampler(vkContext);
+    //CreateCommandPool(vkContext);
     //create the textures
     io::ImageData* brickImageData = io::LoadImage("brick.png");
     brickImageData->name = "brick.png";
@@ -141,8 +138,7 @@ int main(int argc, char** argv)
     io::ImageData* floor01ImageData = io::LoadImage("floor01.jpg");
     floor01ImageData->name = "floor01.jpg";
     std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData };
-    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
-        &vkContext, gpuTextures);
+    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(gpuTextures);
     //create the depth buffers
     std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
     depthBuffersForMainRenderPass.push_back(
@@ -150,8 +146,7 @@ int main(int argc, char** argv)
     depthBuffersForMainRenderPass.push_back(
         { WIDTH, HEIGHT, "helloOffscreenRenderPassDepthBuffer" }
     );
-    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
-        &vkContext, depthBuffersForMainRenderPass
+    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager( depthBuffersForMainRenderPass
     );
     //render pass depends upon the depth buffer
     CreateSwapchainRenderPass(vkContext);
@@ -195,7 +190,7 @@ int main(int argc, char** argv)
         GpuPicker::GPU_PICKER_RENDER_PASS_TARGET
         }
     };
-    rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
+    rttManager = new entities::RenderToTextureTargetManager(renderToTextureImages);
 
     CreateFramebuffersForOnscreenRenderPass(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
     CreateFramebuffersForRenderToTextureRenderPass(vkContext,
@@ -234,7 +229,7 @@ int main(int argc, char** argv)
 
     glfwDestroyWindow(window);
     //cleanup
-    vkDeviceWaitIdle(vkContext.device);
+    vkDeviceWaitIdle(myvk::Device::gDevice->GetDevice());
     delete gpuPickerPipeline;
     delete helloForSwapChain;
     delete rttManager;
@@ -248,7 +243,7 @@ int main(int argc, char** argv)
     DestroySwapChain(vkContext);
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
-    DestroyCommandPool(vkContext);
+    //DestroyCommandPool(vkContext);
 
     delete foo;
     delete bar;
@@ -260,10 +255,12 @@ int main(int argc, char** argv)
     }
     delete depthBufferManager;
     vkContext.DestroyCameraBuffer(vkContext);
-    DestroyLogicalDevice(vkContext);
-    DestroySurface(vkContext);
-    DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
-    DestroyVkInstance(vkContext.instance, vkContext.customAllocators);
+    //DestroyLogicalDevice(vkContext);
+    //DestroySurface(vkContext);
+    //DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
+    //DestroyVkInstance(vkContext.instance, vkContext.customAllocators);
+    delete device;
+    delete instance;
     glfwTerminate();
     return 0;
 }
@@ -279,6 +276,10 @@ void MainLoop(GLFWwindow* window)
 
     while (!glfwWindowShouldClose(window))
     {
+        static PFN_vkCmdDebugMarkerEndEXT __vkCmdDebugMarkerEndEXT;
+        if (__vkCmdDebugMarkerEndEXT == VK_NULL_HANDLE) {
+            __vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(myvk::Device::gDevice->GetDevice(), "vkCmdDebugMarkerEndEXT");
+        }
         glfwPollEvents();
         //Calculate time elapsed since start and delta time
         static auto startTime = std::chrono::high_resolution_clock::now();
@@ -316,7 +317,8 @@ void MainLoop(GLFWwindow* window)
                     vkContext.commandBuffers[vkContext.currentFrame]);
             }
             //end the on-screen render pass
-            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+
+            __vkCmdDebugMarkerEndEXT(currentCommand);
             vkCmdEndRenderPass(currentCommand);
             //begin the offscreen render pass to draw the objs for picking
             SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", currentCommand, vkContext);
@@ -341,12 +343,12 @@ void MainLoop(GLFWwindow* window)
                 rttManager->GetImage(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
                 WIDTH, HEIGHT);
             //end the frame
-            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+            __vkCmdDebugMarkerEndEXT(currentCommand);
             EndFrame(vkContext, imageIndex);
             //now that everything is done, let us get the image as an array of bytes
             std::vector<uint8_t> pixels = gpuPickerPipeline->GetImage();
-            uint32_t indexInPixels = round(gMousePos.y) * WIDTH * 4 +
-                round(gMousePos.x) * 4; //x4 because rgba
+            uint32_t indexInPixels = std::round(gMousePos.y)* WIDTH * 4 +
+                std::round(gMousePos.x) * 4; //x4 because rgba
             //reconstruct the ID
             uint8_t r = pixels[indexInPixels + 0];
             uint32_t R = r << 16;

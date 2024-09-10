@@ -16,6 +16,7 @@ namespace myvk {
         return appInfo;
     }
     Instance::Instance(GLFWwindow* window)
+        :mWindow(window)
     {
         assert(Instance::gInstance == nullptr);//i'll have only one intance, created at the beginning
         Instance::gInstance = this;
@@ -56,7 +57,7 @@ namespace myvk {
         for (int i = 0; i < mPhysicalDevices.size(); i++) {
             auto& d = mPhysicalDevices[i];
             if (d.mProperties.deviceType == type &&
-                samplerAnisotropy == DONT_CARE || (samplerAnisotropy == YES && d.mFeatures.samplerAnisotropy == true)
+                samplerAnisotropy == DONT_CARE || (samplerAnisotropy == YES && d.mFeatures.samplerAnisotropy == 1)
                 ){
                 mChosenDeviceId = i;
             }

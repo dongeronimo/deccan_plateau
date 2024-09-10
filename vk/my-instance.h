@@ -48,8 +48,10 @@ namespace myvk {
         /// </summary>
         /// <param name="window"></param>
         Instance(GLFWwindow* window);
+        const GLFWwindow* mWindow;
         ~Instance();
         VkInstance GetInstance()const { return mInstance; }
+        VkSurfaceKHR GetSurface()const { return mSurface; }
         VkPhysicalDevice GetPhysicalDevice()const;
         /// <summary>
         /// Call this after the ctor and before GetPhysicalDevice

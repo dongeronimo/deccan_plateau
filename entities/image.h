@@ -25,11 +25,10 @@ namespace entities {
     /// </summary>
     class GpuTextureManager {
     public:
-        GpuTextureManager(VkContext* ctx, std::vector<io::ImageData*> images);
+        GpuTextureManager(std::vector<io::ImageData*> images);
         ~GpuTextureManager();
         VkImage GetImage(const std::string& name)const;
         VkImageView GetImageView(const std::string& name)const;
-        const VkContext* mCtx;
     private:
         VkDeviceMemory mDeviceMemory;
         std::map<std::string, Image> mImageTable;
@@ -47,10 +46,10 @@ namespace entities {
             std::string name;
         };
         ~RenderToTextureTargetManager();
-        RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> imgs);
+        RenderToTextureTargetManager(std::vector<RenderToTextureImageCreateData> imgs);
         VkImageView GetImageView(const std::string& name)const;
         VkImage GetImage(const std::string& name)const;
-        const VkContext* mCtx;
+        //const VkContext* mCtx;
     private:
         VkDeviceMemory mDeviceMemory = VK_NULL_HANDLE;
         std::map<std::string, Image> mImageTable;
@@ -59,18 +58,19 @@ namespace entities {
     class DepthBufferManager {
     public:
         static VkFormat findDepthFormat(VkPhysicalDevice physicalDevice);
-        static VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features, VkPhysicalDevice physicalDevice);
+        static VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, 
+            VkImageTiling tiling, VkFormatFeatureFlags features, VkPhysicalDevice physicalDevice);
         struct DepthBufferCreationData {
             uint32_t w;
             uint32_t h;
             std::string name;
         };
-        DepthBufferManager(VkContext* ctx, std::vector<DepthBufferCreationData> images);
+        DepthBufferManager(std::vector<DepthBufferCreationData> images);
         ~DepthBufferManager();
         VkImageView GetImageView(const std::string& name)const {
             return mImageTable.at(name).mImageView;
         }
-        const VkContext* mCtx;
+        //const VkContext* mCtx;
     private:
         VkDeviceMemory mDeviceMemory;
         std::map<std::string, Image> mImageTable;

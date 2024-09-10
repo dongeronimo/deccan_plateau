@@ -16,7 +16,7 @@ namespace vk
     public:
         ObjectNamer(const ObjectNamer&) = delete;
         ObjectNamer& operator=(const ObjectNamer&) = delete;
-        void Init(VkDevice device);
+        void Init();
         static ObjectNamer& Instance();
         void SetName(uint64_t object, VkObjectType objectType, const char* name);
     private:

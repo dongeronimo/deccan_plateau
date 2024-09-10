@@ -1,10 +1,13 @@
 #include "object_namer.h"
 #include <cassert>
+#include "vk\my-device.h"
 VkDevice vk::ObjectNamer::gDevice;
 namespace vk {
-    void vk::ObjectNamer::Init(VkDevice device)
+    void vk::ObjectNamer::Init()
     {
-        gDevice = device;
+        assert(myvk::Device::gDevice != nullptr);
+        gDevice = myvk::Device::gDevice->GetDevice();
+        assert(gDevice != VK_NULL_HANDLE);
     }
 
     ObjectNamer& ObjectNamer::Instance()

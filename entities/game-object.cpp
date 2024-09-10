@@ -6,6 +6,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include "my-vk.h"
+#include "vk/my-device.h"
+#include "vk/my-instance.h"
 #include <map>
 /// <summary>
 /// The global pool for object buffer uniforms
@@ -44,7 +46,7 @@ uint32_t GetNextGameObjectId() {
 
 namespace entities {
     GameObject::GameObject(VkContext* ctx, const std::string& name):
-        mName(name), mDevice(ctx->device),
+        mName(name), mDevice(myvk::Device::gDevice->GetDevice()),
         mOrientation(glm::quat()), mPosition(glm::vec3(0,0,0)),
         mId(GetNextGameObjectId())
     {
@@ -78,7 +80,7 @@ namespace entities {
     uint32_t GameObjectUniformBufferPool::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx)
     {
         VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(ctx.physicalDevice, &memProperties);
+        vkGetPhysicalDeviceMemoryProperties(myvk::Instance::gInstance->GetPhysicalDevice(), &memProperties);
         for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
             if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
                 return i;
@@ -101,7 +103,7 @@ namespace entities {
         objectPoolInfo.poolSizeCount = 1;
         objectPoolInfo.pPoolSizes = &objectPoolSize;
         objectPoolInfo.maxSets = number_of_buffers; // Support up to 100 descriptor sets for objects
-        if (vkCreateDescriptorPool(ctx->device, &objectPoolInfo, nullptr, &mObjectDescriptorPool) != VK_SUCCESS) {
+        if (vkCreateDescriptorPool(myvk::Device::gDevice->GetDevice(), &objectPoolInfo, nullptr, &mObjectDescriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create object descriptor pool!");
         }
         SET_NAME(mObjectDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "objectDescriptorPool");
@@ -113,18 +115,18 @@ namespace entities {
         bigAssBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
         bigAssBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         mBigBufferForDeviceMemoryAllocation = VK_NULL_HANDLE;
-        vkCreateBuffer(ctx->device, &bigAssBufferInfo, nullptr, &mBigBufferForDeviceMemoryAllocation);
+        vkCreateBuffer(myvk::Device::gDevice->GetDevice(), &bigAssBufferInfo, nullptr, &mBigBufferForDeviceMemoryAllocation);
         SET_NAME(mBigBufferForDeviceMemoryAllocation, VK_OBJECT_TYPE_BUFFER, "BigAssBufferForObjectUniform");
         VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(ctx->device, mBigBufferForDeviceMemoryAllocation, &memRequirements);
+        vkGetBufferMemoryRequirements(myvk::Device::gDevice->GetDevice(), mBigBufferForDeviceMemoryAllocation, &memRequirements);
         VkMemoryAllocateInfo memoryAllocInfo{};
         memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         memoryAllocInfo.allocationSize = memRequirements.size;
         memoryAllocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, *ctx);
         //Allocate the memory for the big buffer
-        vkAllocateMemory(ctx->device, &memoryAllocInfo, nullptr, &mBuffersMemory);
-        vkBindBufferMemory(ctx->device, mBigBufferForDeviceMemoryAllocation, mBuffersMemory, 0);
+        vkAllocateMemory(myvk::Device::gDevice->GetDevice(), &memoryAllocInfo, nullptr, &mBuffersMemory);
+        vkBindBufferMemory(myvk::Device::gDevice->GetDevice(), mBigBufferForDeviceMemoryAllocation, mBuffersMemory, 0);
         //now that i have the buffer and the memory we can create the descriptor sets and update them.
         //one descriptor set for each buffer. 
         assert(ctx->helloObjectDescriptorSetLayout != VK_NULL_HANDLE);
@@ -135,7 +137,7 @@ namespace entities {
         //one descriptor set for each frame in flight
         descriptorSetAllocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * MAX_NUMBER_OF_GAME_OBJECTS);
         descriptorSetAllocInfo.pSetLayouts = layouts.data();
-        vkAllocateDescriptorSets(ctx->device, &descriptorSetAllocInfo, mDescriptorSets.data());
+        vkAllocateDescriptorSets(myvk::Device::gDevice->GetDevice(), &descriptorSetAllocInfo, mDescriptorSets.data());
         //update each descriptor set. Mind the offset
         for (size_t i = 0; i < number_of_buffers; i++) {
             VkDescriptorBufferInfo bufferInfo{};
@@ -150,21 +152,21 @@ namespace entities {
             descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
             descriptorWrite.descriptorCount = 1;
             descriptorWrite.pBufferInfo = &bufferInfo;
-            vkUpdateDescriptorSets(ctx->device, 1, &descriptorWrite, 0, nullptr);
+            vkUpdateDescriptorSets(myvk::Device::gDevice->GetDevice(), 1, &descriptorWrite, 0, nullptr);
             mUniformBufferOffsets[i] = sizeof(ObjectUniformBuffer) * i;
         }
         //map the memory
-        vkMapMemory(ctx->device, mBuffersMemory, 0,
+        vkMapMemory(myvk::Device::gDevice->GetDevice(), mBuffersMemory, 0,
             sizeof(ObjectUniformBuffer) * number_of_buffers, 0, &mBaseAddress);
         //now we are done - we have the descriptor sets, mapped to positions in the buffer, and memories for these positions.
     }
 
     GameObjectUniformBufferPool::~GameObjectUniformBufferPool()
     {
-        vkUnmapMemory(mCtx->device, mBuffersMemory);
-        vkFreeMemory(mCtx->device, mBuffersMemory, nullptr);
-        vkDestroyBuffer(mCtx->device, mBigBufferForDeviceMemoryAllocation, nullptr);
-        vkDestroyDescriptorPool(mCtx->device, mObjectDescriptorPool, nullptr);
+        vkUnmapMemory(myvk::Device::gDevice->GetDevice(), mBuffersMemory);
+        vkFreeMemory(myvk::Device::gDevice->GetDevice(), mBuffersMemory, nullptr);
+        vkDestroyBuffer(myvk::Device::gDevice->GetDevice(), mBigBufferForDeviceMemoryAllocation, nullptr);
+        vkDestroyDescriptorPool(myvk::Device::gDevice->GetDevice(), mObjectDescriptorPool, nullptr);
     }
 
     std::pair<uintptr_t, VkDescriptorSet> GameObjectUniformBufferPool::Get(uint32_t i)

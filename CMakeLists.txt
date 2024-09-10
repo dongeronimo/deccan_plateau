@@ -96,6 +96,8 @@ add_executable(deccan-plateau-demo
     gpu-picking/gpu-picker-pipeline.h
     vk/my-instance.h
     vk/my-instance.cpp
+    vk/my-device.cpp
+    vk/my-device.h
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers
