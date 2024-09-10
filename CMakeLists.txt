@@ -81,6 +81,8 @@ add_executable(deccan-plateau-demo
     entities/mesh.h
     entities/image.cpp
     entities/image.h
+    entities/renderable.h
+    entities/renderable.cpp
     io/asset-paths.cpp
     io/asset-paths.h
     io/mesh-data.h
@@ -92,7 +94,10 @@ add_executable(deccan-plateau-demo
     io/image-load.cpp
     gpu-picking/gpu-picker-pipeline.cpp
     gpu-picking/gpu-picker-pipeline.h
-
+    vk/my-instance.h
+    vk/my-instance.cpp
+    vk/my-device.cpp
+    vk/my-device.h
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers

@@ -17,6 +17,9 @@
 #include "concatenate.h"
 #include "entities/pipeline.h"
 #include "gpu-picking/gpu-picker-pipeline.h"
+#include "entities/renderable.h"
+#include "vk/my-instance.h"
+#include "vk/my-device.h"
 
 std::map<std::string, entities::Mesh*> gMeshTable;
 entities::Pipeline* helloForSwapChain = nullptr;
@@ -80,7 +83,7 @@ void myFreeFunction(
 #endif
     _aligned_free(pMemory);
 }
-std::vector<entities::GameObject*> gGameObjects{};
+std::vector<entities::Renderable*> gRenderables{};
 
 int main(int argc, char** argv)
 {
@@ -104,29 +107,29 @@ int main(int argc, char** argv)
         printf("  %s\n", ext.extensionName);
     }
     ///Vulkan initialization
-    vkContext.window = window;
-    vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
-    vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
-    vkContext.customAllocators.myReallocationFunction = myReallocationFunction;
-    vkContext.customAllocators.myFreeFunction = myFreeFunction;
-    CreateVkInstance(vkContext.instance, vkContext.customAllocators);
-    SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
-    CreateSurface(vkContext, window);
-    SelectPhysicalDevice(vkContext);
-    CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
-    //it's best to create the namer as soon as possible.
-    vk::ObjectNamer::Instance().Init(vkContext.device);
-    CreateCommandPool(vkContext);
-
-
-
+    
+    myvk::Instance* instance = new myvk::Instance(window);
+    instance->ChoosePhysicalDevice(VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, myvk::YES);
+    myvk::Device* device = new myvk::Device(instance->GetPhysicalDevice(),
+        instance->GetInstance(), instance->GetSurface(), GetValidationLayerNames());
     CreateSwapChain(vkContext);
     CreateImageViewForSwapChain(vkContext);
-
-    //the hello pipeline needs these descriptors.
+    //Crete the global descriptor sets, they are used by many pipelines.
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
     CreateDescriptorSetLayoutForSampler(vkContext);
+    //vkContext.window = window;
+    //vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
+    //vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
+    //vkContext.customAllocators.myReallocationFunction = myReallocationFunction;
+    //vkContext.customAllocators.myFreeFunction = myFreeFunction;
+    //CreateVkInstance(vkContext.instance, vkContext.customAllocators);
+    //SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
+    //CreateSurface(vkContext, window);
+    //SelectPhysicalDevice(vkContext);
+    //CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
+    //it's best to create the namer as soon as possible.
+    //CreateCommandPool(vkContext);
     //create the textures
     io::ImageData* brickImageData = io::LoadImage("brick.png");
     brickImageData->name = "brick.png";
@@ -135,8 +138,7 @@ int main(int argc, char** argv)
     io::ImageData* floor01ImageData = io::LoadImage("floor01.jpg");
     floor01ImageData->name = "floor01.jpg";
     std::vector<io::ImageData*> gpuTextures{ brickImageData , blackBrickImageData, floor01ImageData };
-    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(
-        &vkContext, gpuTextures);
+    entities::GpuTextureManager* gpuTextureManager = new entities::GpuTextureManager(gpuTextures);
     //create the depth buffers
     std::vector<entities::DepthBufferManager::DepthBufferCreationData> depthBuffersForMainRenderPass;
     depthBuffersForMainRenderPass.push_back(
@@ -144,8 +146,7 @@ int main(int argc, char** argv)
     depthBuffersForMainRenderPass.push_back(
         { WIDTH, HEIGHT, "helloOffscreenRenderPassDepthBuffer" }
     );
-    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager(
-        &vkContext, depthBuffersForMainRenderPass
+    entities::DepthBufferManager* depthBufferManager = new entities::DepthBufferManager( depthBuffersForMainRenderPass
     );
     //render pass depends upon the depth buffer
     CreateSwapchainRenderPass(vkContext);
@@ -189,7 +190,7 @@ int main(int argc, char** argv)
         GpuPicker::GPU_PICKER_RENDER_PASS_TARGET
         }
     };
-    rttManager = new entities::RenderToTextureTargetManager(&vkContext, renderToTextureImages);
+    rttManager = new entities::RenderToTextureTargetManager(renderToTextureImages);
 
     CreateFramebuffersForOnscreenRenderPass(vkContext, depthBufferManager->GetImageView("mainRenderPassDepthBuffer"));
     CreateFramebuffersForRenderToTextureRenderPass(vkContext,
@@ -206,30 +207,34 @@ int main(int argc, char** argv)
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
 
-
+    for (auto& x : depthBuffersForMainRenderPass) {
+        
+    }
     //create the mesh
     entities::Mesh* monkeyMesh = new entities::Mesh(*monkeyMeshFile, &vkContext);
     gMeshTable.insert({ monkeyMesh->mName, monkeyMesh });
     entities::Mesh* cubeMesh = new entities::Mesh(*cubeMeshFile, &vkContext);
     gMeshTable.insert({ cubeMesh->mName, cubeMesh });
     //now that all vulkan infra is created we create the game objects
-    entities::GameObject* foo = new entities::GameObject(&vkContext, "foo", monkeyMesh);
+    entities::Renderable* foo = new entities::Renderable(&vkContext, "foo", monkeyMesh);
     foo->SetPosition(glm::vec3{ 1,0,0 });
-    entities::GameObject* bar = new entities::GameObject(&vkContext, "bar", cubeMesh);
+    entities::Renderable* bar = new entities::Renderable(&vkContext, "bar", cubeMesh);
     bar->SetPosition(glm::vec3{ -1,0,0 });
-    gGameObjects.push_back(foo);
-    gGameObjects.push_back(bar);
-    entities::GameObject* woo = new entities::GameObject(&vkContext, "woo", monkeyMesh);
+    gRenderables.push_back(foo);
+    gRenderables.push_back(bar);
+    entities::Renderable* woo = new entities::Renderable(&vkContext, "woo", monkeyMesh);
     woo->SetPosition(glm::vec3{ 0,4,0 });
-    gGameObjects.push_back(woo);
+    gRenderables.push_back(woo);
     MainLoop(window);
 
     glfwDestroyWindow(window);
-
+    //cleanup
+    vkDeviceWaitIdle(myvk::Device::gDevice->GetDevice());
+    delete gpuPickerPipeline;
+    delete helloForSwapChain;
+    delete rttManager;
     delete brickImageData;
     delete gpuTextureManager;
-    //cleanup
-    vkDeviceWaitIdle(vkContext.device);
     DestroyDescriptorSets(vkContext);
     DestroyPipeline(vkContext);
     DestroyPipelineLayout(vkContext);
@@ -238,21 +243,32 @@ int main(int argc, char** argv)
     DestroySwapChain(vkContext);
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
-    DestroyCommandPool(vkContext);
 
+    vkFreeCommandBuffers(device->GetDevice(), device->GetCommandPool(), vkContext.commandBuffers.size(), vkContext.commandBuffers.data());
+    vkDestroyFramebuffer(device->GetDevice(), vkContext.mRTTFramebuffer, nullptr);
+    vkDestroyRenderPass(device->GetDevice(), vkContext.mRenderToTextureRenderPass, nullptr);
+    vkDestroySampler(device->GetDevice(), vkContext.helloSampler, nullptr);
+    vkDestroyDescriptorPool(device->GetDevice(), vkContext.helloSamplerDescriptorPool, nullptr);
+    //vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloCameraDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloObjectDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloSamplerDescriptorSetLayout, nullptr);
+    
     delete foo;
     delete bar;
+    delete woo;
     entities::GameObjectUniformBufferPool::Destroy();
     for (auto& kv : gMeshTable) {
         delete kv.second;
         kv.second = nullptr;
     }
-
+    delete depthBufferManager;
     vkContext.DestroyCameraBuffer(vkContext);
-    DestroyLogicalDevice(vkContext);
-    DestroySurface(vkContext);
-    DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
-    DestroyVkInstance(vkContext.instance, vkContext.customAllocators);
+    //DestroyLogicalDevice(vkContext);
+    //DestroySurface(vkContext);
+    //DestroyDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
+    //DestroyVkInstance(vkContext.instance, vkContext.customAllocators);
+    delete device;
+    delete instance;
     glfwTerminate();
     return 0;
 }
@@ -268,6 +284,10 @@ void MainLoop(GLFWwindow* window)
 
     while (!glfwWindowShouldClose(window))
     {
+        static PFN_vkCmdDebugMarkerEndEXT __vkCmdDebugMarkerEndEXT;
+        if (__vkCmdDebugMarkerEndEXT == VK_NULL_HANDLE) {
+            __vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(myvk::Device::gDevice->GetDevice(), "vkCmdDebugMarkerEndEXT");
+        }
         glfwPollEvents();
         //Calculate time elapsed since start and delta time
         static auto startTime = std::chrono::high_resolution_clock::now();
@@ -300,12 +320,13 @@ void MainLoop(GLFWwindow* window)
                 onscreenClearValues
             );
             helloForSwapChain->Bind(currentCommand);
-            for (auto go : gGameObjects) {
-                helloForSwapChain->DrawGameObject(go, &cameraBuffer, 
+            for (auto go : gRenderables) {
+                helloForSwapChain->DrawRenderable(go, &cameraBuffer, 
                     vkContext.commandBuffers[vkContext.currentFrame]);
             }
             //end the on-screen render pass
-            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+
+            __vkCmdDebugMarkerEndEXT(currentCommand);
             vkCmdEndRenderPass(currentCommand);
             //begin the offscreen render pass to draw the objs for picking
             SetMark({ 0.8f, 0.1f, 0.3f }, "RenderToTextureRenderPass", currentCommand, vkContext);
@@ -319,8 +340,8 @@ void MainLoop(GLFWwindow* window)
                 offscreenClearValues
             );
             gpuPickerPipeline->Bind(currentCommand);
-            for (auto go : gGameObjects) {
-                gpuPickerPipeline->DrawGameObject(go, &cameraBuffer,
+            for (auto go : gRenderables) {
+                gpuPickerPipeline->DrawRenderable(go, &cameraBuffer,
                     currentCommand);
             }
             //end the offscreen render pass
@@ -330,12 +351,12 @@ void MainLoop(GLFWwindow* window)
                 rttManager->GetImage(GpuPicker::GPU_PICKER_RENDER_PASS_TARGET),
                 WIDTH, HEIGHT);
             //end the frame
-            vkContext.vkCmdDebugMarkerEndEXT(currentCommand);
+            __vkCmdDebugMarkerEndEXT(currentCommand);
             EndFrame(vkContext, imageIndex);
             //now that everything is done, let us get the image as an array of bytes
             std::vector<uint8_t> pixels = gpuPickerPipeline->GetImage();
-            uint32_t indexInPixels = round(gMousePos.y) * WIDTH * 4 +
-                round(gMousePos.x) * 4; //x4 because rgba
+            uint32_t indexInPixels = std::round(gMousePos.y)* WIDTH * 4 +
+                std::round(gMousePos.x) * 4; //x4 because rgba
             //reconstruct the ID
             uint8_t r = pixels[indexInPixels + 0];
             uint32_t R = r << 16;
@@ -345,16 +366,16 @@ void MainLoop(GLFWwindow* window)
             uint32_t reconstructedId = R + G + b;
             //Find the game object and print to show that i can do picking.
             entities::GameObject* pickedGO = nullptr;
-            for (auto i = 0; i < gGameObjects.size(); i++) {
-                if (gGameObjects[i]->mId == reconstructedId) {
-                    pickedGO = gGameObjects[i];
+            for (auto i = 0; i < gRenderables.size(); i++) {
+                if (gRenderables[i]->mId == reconstructedId) {
+                    pickedGO = gRenderables[i];
                     break;
                 }
             }
             std::string goName = (pickedGO != nullptr ? pickedGO->mName : "n/d");
             //the id became an rgb using the formula in idToColor at gpu_picker.frag. I need to revert            
-            printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
-                r,g,b, reconstructedId, goName.c_str());
+            //printf("pos[%f,%f], val[%d,%d,%d], id[%d], go[%s]\n", gMousePos.x, gMousePos.y,
+            //    r,g,b, reconstructedId, goName.c_str());
         }
         
     }

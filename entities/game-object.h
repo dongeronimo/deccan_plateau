@@ -53,11 +53,14 @@ namespace entities {
         std::array<uintptr_t, MAX_FRAMES_IN_FLIGHT* MAX_NUMBER_OF_GAME_OBJECTS> mUniformBufferOffsets;
         std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT* MAX_NUMBER_OF_GAME_OBJECTS> mDescriptorSets;
     };
+    /// <summary>
+    /// Base class for objects that exist in the world. The model matrix and 
+    /// its descriptor set belongs to this class.
+    /// </summary>
     class GameObject {
     public:
         GameObject(VkContext* ctx, 
-            const std::string& name, 
-            const Mesh* mesh);
+            const std::string& name);
         void SetPosition(glm::vec3& pos) {
             mPosition = pos;
         }
@@ -70,9 +73,9 @@ namespace entities {
         uint32_t DynamicOffset(uint32_t frame)const {
             return (mId * MAX_FRAMES_IN_FLIGHT + frame) * sizeof(ObjectUniformBuffer);
         }
-        const Mesh* mMesh;
+
         const uint32_t mId;
-        const glm::vec3 mPickerColor;
+        
         const std::string mName;
         const VkDevice mDevice;
         void CommitDataToObjectBuffer(uint32_t currentFrame);

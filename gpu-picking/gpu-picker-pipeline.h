@@ -5,7 +5,7 @@
 struct VkContext;
 struct CameraUniformBuffer;
 namespace entities {
-    class GameObject;
+    class Renderable;
 }
 namespace GpuPicker {
     const std::string GPU_PICKER_RENDER_PASS_TARGET = "gpuPickerRenderPassTargetImage";
@@ -16,25 +16,24 @@ namespace GpuPicker {
             std::vector<VkDescriptorSetLayout> descriptorSetLayouts,
             const std::string& name
         );
+        ~GpuPickerPipeline();
         const std::string mName;
         const VkContext* mCtx;
         const VkRenderPass mRenderPass;
         VkPipeline GetPipeline()const { return pipeline; }
         VkPipelineLayout GetPipelineLayout()const { return pipelineLayout; }
         void Bind(VkCommandBuffer cmd);
-        void DrawGameObject(entities::GameObject* obj, CameraUniformBuffer* camera,
+        void DrawRenderable(entities::Renderable* obj, CameraUniformBuffer* camera,
             VkCommandBuffer cmd);
 
         void ScheduleTransferImageFromGPUtoCPU(VkCommandBuffer cmd,
             VkImage gpuImage, uint32_t w, uint32_t h);
         std::vector<uint8_t> GetImage();
     private:
-
-
         VkShaderModule vertexShaderModule = VK_NULL_HANDLE;
         VkShaderModule fragmentShaderModule = VK_NULL_HANDLE;
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         VkPipeline pipeline;
-        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+        std::vector<VkDescriptorSetLayout> descriptorSetLayouts;//remember, i don't own these.
     };
 }

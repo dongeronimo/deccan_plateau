@@ -4,6 +4,8 @@
 #include "object_namer.h"
 #include "concatenate.h"
 #include "commandBufferUtils.h"
+#include "vk/my-device.h"
+#include "vk/my-instance.h"
 void SetImageObjName(VkImage img, const std::string& baseName) {
     auto name = Concatenate(baseName, "ImageObject");
     SET_NAME(img, VK_OBJECT_TYPE_IMAGE, name.c_str());
@@ -86,20 +88,31 @@ void CopyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t 
 }
 
 namespace entities {
-    RenderToTextureTargetManager::RenderToTextureTargetManager(VkContext* ctx, std::vector<RenderToTextureImageCreateData> images) :
-        mCtx(ctx)
+    RenderToTextureTargetManager::~RenderToTextureTargetManager()
     {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
+        vkFreeMemory(device, mDeviceMemory, nullptr);
+        for (auto& kv : mImageTable) {
+            vkDestroyImage(device, kv.second.mImage, nullptr);
+            vkDestroyImageView(device, kv.second.mImageView, nullptr);
+        }
+    }
+    RenderToTextureTargetManager::RenderToTextureTargetManager( 
+        std::vector<RenderToTextureImageCreateData> images)
+    {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
+        VkPhysicalDevice physicalDevice = myvk::Instance::gInstance->GetPhysicalDevice();
         std::vector<VkImage> vkImages;
         std::vector<VkMemoryRequirements> memoryRequirements;
         VkDeviceSize totalSize = 0;
         VkDeviceSize currentOffset = 0;
         for (int i = 0; i < images.size(); i++) {
-            VkImage image = CreateImage(ctx->device, images[i].w, images[i].h,
+            VkImage image = CreateImage(device, images[i].w, images[i].h,
                 images[i].format,
                 images[i].usage);
             SetImageObjName(image, images[i].name);
             VkMemoryRequirements memRequirements;
-            vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
+            vkGetImageMemoryRequirements(device, image, &memRequirements);
             vkImages.push_back(image);
             memoryRequirements.push_back(memRequirements);
             // Align the current offset to the required alignment of this image
@@ -110,16 +123,16 @@ namespace entities {
             currentOffset += memRequirements.size;
         }
         VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
         uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
         uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
         //allocate the big memory for all the images
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = totalSize;  // Total size from previous calculations
         allocInfo.memoryTypeIndex = memoryTypeIndex;
-        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate large device memory!");
         }
         SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "RenderToTextureDeviceMemory");
@@ -129,7 +142,7 @@ namespace entities {
             // Align the current offset to the required alignment of this image
             currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
             // Bind the image to the memory at the aligned offset
-            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
+            if (vkBindImageMemory(device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind image memory!");
             }
             
@@ -149,7 +162,7 @@ namespace entities {
             textureViewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
             textureViewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
             VkImageView textureImageView;
-            if (vkCreateImageView(ctx->device, &textureViewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
+            if (vkCreateImageView(device, &textureViewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create texture image view!");
             }
             auto __name = Concatenate(images[i].name, "ImageView");
@@ -175,21 +188,25 @@ namespace entities {
         return mImageTable.at(name).mImage;
     }
 
-    GpuTextureManager::GpuTextureManager(VkContext* ctx,
-        std::vector<io::ImageData*> images):mCtx(ctx)
+    GpuTextureManager::GpuTextureManager(
+        std::vector<io::ImageData*> images)
     {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
+        VkPhysicalDevice physicalDevice = myvk::Instance::gInstance->GetPhysicalDevice();
+        VkCommandPool commandPool = myvk::Device::gDevice->GetCommandPool();
+        VkQueue graphicsQueue = myvk::Device::gDevice->GetGraphicsQueue();
         //Calculate the memory requirements
         std::vector<VkImage> vkImages;
         std::vector<VkMemoryRequirements> memoryRequirements;
         VkDeviceSize totalSize = 0;
         VkDeviceSize currentOffset = 0;
         for (int i = 0; i < images.size(); i++) {
-            VkImage image = CreateImage(ctx->device, images[i]->w, images[i]->h,
+            VkImage image = CreateImage(device, images[i]->w, images[i]->h,
                 VK_FORMAT_R8G8B8A8_SRGB,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
             SetImageObjName(image, images[i]->name);
             VkMemoryRequirements memRequirements;
-            vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
+            vkGetImageMemoryRequirements(device, image, &memRequirements);
             vkImages.push_back(image);
             memoryRequirements.push_back(memRequirements);
             // Align the current offset to the required alignment of this image
@@ -200,17 +217,17 @@ namespace entities {
             currentOffset += memRequirements.size;
         }
         VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
         //find the memory type that is compatible with all images        
         uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
         uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes, 
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
         //allocate the big memory for all the images
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = totalSize;  // Total size from previous calculations
         allocInfo.memoryTypeIndex = memoryTypeIndex;
-        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate large device memory!");
         }
         SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "GpuTexturesDeviceMemory");
@@ -221,7 +238,7 @@ namespace entities {
             // Align the current offset to the required alignment of this image
             currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
             // Bind the image to the memory at the aligned offset
-            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
+            if (vkBindImageMemory(device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind image memory!");
             }
             //copy to the staging buffer
@@ -230,11 +247,11 @@ namespace entities {
             CreateBuffer(images[i]->size,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT, //will be a source of transfer 
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,//memory visible on cpu side 
-                textureStagingBuffer, textureStagingMemory, *ctx);
+                textureStagingBuffer, textureStagingMemory, device);
             void* textureDataPtr;
-            vkMapMemory(ctx->device, textureStagingMemory, 0, images[i]->size, 0, &textureDataPtr);
+            vkMapMemory(device, textureStagingMemory, 0, images[i]->size, 0, &textureDataPtr);
             memcpy(textureDataPtr, images[i]->pixels.data(), static_cast<size_t>(images[i]->size));
-            vkUnmapMemory(ctx->device, textureStagingMemory);
+            vkUnmapMemory(device, textureStagingMemory);
             auto __name = Concatenate(images[i]->name, "StagingBuffer");
             SET_NAME(textureStagingBuffer, VK_OBJECT_TYPE_BUFFER, __name.c_str());
             __name = Concatenate(images[i]->name, "StagingBufferDeviceMemory");
@@ -243,15 +260,15 @@ namespace entities {
             //change the image from whatever it is when it's created to a destination of a copy with optimal layout
             TransitionImageLayout(vkImages[i], VK_FORMAT_R8G8B8A8_SRGB,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                ctx->commandPool, ctx->device, ctx->graphicsQueue);
+                commandPool, device, graphicsQueue);
             //now that the image can be the dest of a copy, do it
             CopyBufferToImage(textureStagingBuffer, vkImages[i],
                 static_cast<uint32_t>(images[i]->w), static_cast<uint32_t>(images[i]->h),
-                ctx->commandPool, ctx->device, ctx->graphicsQueue);
+                commandPool, device, graphicsQueue);
             //transition it from destination of copy to shader-only.
             TransitionImageLayout(vkImages[i], VK_FORMAT_R8G8B8A8_SRGB,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                ctx->commandPool, ctx->device, ctx->graphicsQueue);
+                commandPool, device, graphicsQueue);
 
 
             //create the view
@@ -266,13 +283,13 @@ namespace entities {
             textureViewInfo.subresourceRange.baseArrayLayer = 0;
             textureViewInfo.subresourceRange.layerCount = 1;
             VkImageView textureImageView;
-            if (vkCreateImageView(ctx->device, &textureViewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
+            if (vkCreateImageView(device, &textureViewInfo, nullptr, &textureImageView) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create texture image view!");
             }
             __name = Concatenate(images[i]->name, "ImageView");
             SET_NAME(textureImageView, VK_OBJECT_TYPE_IMAGE_VIEW, __name.c_str());
-            vkDestroyBuffer(ctx->device, textureStagingBuffer, nullptr);
-            vkFreeMemory(ctx->device, textureStagingMemory, nullptr);
+            vkDestroyBuffer(device, textureStagingBuffer, nullptr);
+            vkFreeMemory(device, textureStagingMemory, nullptr);
             //add to the table
             Image img{
                 vkImages[i],
@@ -287,11 +304,12 @@ namespace entities {
     }
     GpuTextureManager::~GpuTextureManager()
     {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
         for (auto& kv : mImageTable) {
-            vkDestroyImage(mCtx->device, kv.second.mImage, nullptr);
-            vkDestroyImageView(mCtx->device, kv.second.mImageView, nullptr);
+            vkDestroyImage(device, kv.second.mImage, nullptr);
+            vkDestroyImageView(device, kv.second.mImageView, nullptr);
         }
-        vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
+        vkFreeMemory(device, mDeviceMemory, nullptr);
         mImageTable.clear();
     }
     VkImage GpuTextureManager::GetImage(const std::string& name) const
@@ -378,22 +396,26 @@ namespace entities {
         throw std::runtime_error("failed to find supported format!");
     }
 
-    DepthBufferManager::DepthBufferManager(VkContext* ctx,
+    DepthBufferManager::DepthBufferManager(
         std::vector<DepthBufferCreationData> images)
-        :mCtx(ctx), mDeviceMemory(VK_NULL_HANDLE)
+        : mDeviceMemory(VK_NULL_HANDLE)
     {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
+        VkPhysicalDevice physicalDevice = myvk::Instance::gInstance->GetPhysicalDevice();
+        VkCommandPool commandPool = myvk::Device::gDevice->GetCommandPool();
+        VkQueue graphicsQueue = myvk::Device::gDevice->GetGraphicsQueue();
         //Calculate the memory requirements
         std::vector<VkImage> vkImages;
         std::vector<VkMemoryRequirements> memoryRequirements;
         VkDeviceSize totalSize = 0;
         VkDeviceSize currentOffset = 0;
         for (int i = 0; i < images.size(); i++) {
-            VkFormat depthFormat = findDepthFormat(ctx->physicalDevice);
-            VkImage image = CreateImage(ctx->device, images[i].w, images[i].h,
+            VkFormat depthFormat = findDepthFormat(physicalDevice);
+            VkImage image = CreateImage(device, images[i].w, images[i].h,
                 depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
             SetImageObjName(image, images[i].name);
             VkMemoryRequirements memRequirements;
-            vkGetImageMemoryRequirements(ctx->device, image, &memRequirements);
+            vkGetImageMemoryRequirements(device, image, &memRequirements);
             vkImages.push_back(image);
             memoryRequirements.push_back(memRequirements);
             // Align the current offset to the required alignment of this image
@@ -404,16 +426,16 @@ namespace entities {
             currentOffset += memRequirements.size;
         }
         VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(ctx->physicalDevice, &memProperties);
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
         uint32_t compatibleMemoryTypes = FindMemoryTypesCompatibleWithAllImages(memoryRequirements);
         uint32_t memoryTypeIndex = __findMemoryType(compatibleMemoryTypes,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ctx->physicalDevice);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
         //allocate the big memory for all the images
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = totalSize;  // Total size from previous calculations
         allocInfo.memoryTypeIndex = memoryTypeIndex;
-        if (vkAllocateMemory(ctx->device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &mDeviceMemory) != VK_SUCCESS) {
             throw std::runtime_error("Failed to allocate large device memory!");
         }
         SET_NAME(mDeviceMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "DepthBuffersDeviceMemory");
@@ -424,7 +446,7 @@ namespace entities {
             // Align the current offset to the required alignment of this image
             currentOffset = (currentOffset + memRequirements.alignment - 1) & ~(memRequirements.alignment - 1);
             // Bind the image to the memory at the aligned offset
-            if (vkBindImageMemory(ctx->device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
+            if (vkBindImageMemory(device, vkImages[i], mDeviceMemory, currentOffset) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to bind image memory!");
             }
             //create the view
@@ -432,14 +454,14 @@ namespace entities {
             depthImageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
             depthImageViewInfo.image = vkImages[i];
             depthImageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            depthImageViewInfo.format = findDepthFormat(ctx->physicalDevice);
+            depthImageViewInfo.format = findDepthFormat(physicalDevice);
             depthImageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
             depthImageViewInfo.subresourceRange.baseMipLevel = 0;
             depthImageViewInfo.subresourceRange.levelCount = 1;
             depthImageViewInfo.subresourceRange.baseArrayLayer = 0;
             depthImageViewInfo.subresourceRange.layerCount = 1;
             VkImageView depthImageView;
-            if (vkCreateImageView(ctx->device, &depthImageViewInfo,
+            if (vkCreateImageView(device, &depthImageViewInfo,
                 nullptr, &depthImageView) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create depth image view!");
             }
@@ -458,11 +480,12 @@ namespace entities {
     }
     DepthBufferManager::~DepthBufferManager()
     {
+        VkDevice device = myvk::Device::gDevice->GetDevice();
         for (auto& kv : mImageTable) {
-            vkDestroyImage(mCtx->device, kv.second.mImage, nullptr);
-            vkDestroyImageView(mCtx->device, kv.second.mImageView, nullptr);
+            vkDestroyImage(device, kv.second.mImage, nullptr);
+            vkDestroyImageView(device, kv.second.mImageView, nullptr);
         }
-        vkFreeMemory(mCtx->device, mDeviceMemory, nullptr);
+        vkFreeMemory(device, mDeviceMemory, nullptr);
     }
 
 

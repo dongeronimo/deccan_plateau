@@ -15,6 +15,13 @@ void SetupDebugMessenger(VkInstance instance,
     VkDebugUtilsMessengerEXT& debugMessenger,
     const CustomAllocators& allocators);
 
+void SetupDebugMessenger(VkInstance instance,
+    VkDebugUtilsMessengerEXT& debugMessenger);
+
+
 void DestroyDebugMessenger(VkInstance instance,
     VkDebugUtilsMessengerEXT debugMessenger,
     const CustomAllocators& allocators);
+
+void DestroyDebugMessenger(VkInstance instance,
+    VkDebugUtilsMessengerEXT debugMessenger);

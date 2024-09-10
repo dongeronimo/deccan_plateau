@@ -62,17 +62,6 @@ struct alignas(16) CameraUniformBuffer {
     /// </summary>
     alignas(16)glm::mat4 proj;
 };
-///// <summary>
-///// Holds object-specific data. Corresponds to ObjectUniformBuffer in 
-///// hello_shader.vert
-///// </summary>
-//struct alignas(16) ObjectUniformBuffer {
-//    /// <summary>
-//    /// Model matrix
-//    /// </summary>
-//    alignas(16)glm::mat4 model;
-//};
-
 
 //TODO: Move it somewhere more appropriate
 //Returns the vertex binding, it'll be one binding, with input per-vertex and stride equals to the
@@ -86,11 +75,7 @@ std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions();
 /// </summary>
 struct VkContext
 {
-    PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBeginEXT = nullptr;
-    PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
-    PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
-
-    GLFWwindow* window;
+    //GLFWwindow* window = nullptr;//TODO: kill me
     /// <summary>
     /// TODO: Allow for many custom allocators, one for each situation
     /// Holds the function pointer for the custom allocator callbacks
@@ -100,11 +85,11 @@ struct VkContext
     /// The Vk library instance, the first thing to be created and the last to be
     /// destroyed. Thru it we get the physical devices.
     /// </summary>
-    VkInstance instance;
+    //VkInstance instance = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Debug messenger obj
     /// </summary>
-    VkDebugUtilsMessengerEXT debugMessenger;
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// The physical device: the representation of the physical gpu
     /// </summary>
@@ -117,23 +102,6 @@ struct VkContext
     /// Id of the present queue family in physicalDevice. Can be the same as graphicsFamily
     /// </summary>
     uint32_t presentFamily;
-    /// <summary>
-    /// The logical device, that we use to interact with the gpu
-    /// </summary>
-    VkDevice device;
-    /// <summary>
-    /// Graphics command queue. Can be the equal to presentQueue, which means that the queue supports
-    /// both categories of commands
-    /// </summary>
-    VkQueue graphicsQueue;
-    /// <summary>
-    /// THe surface is the glue between the window system and vk.
-    /// </summary>
-    VkSurfaceKHR surface;
-    /// <summary>
-    /// Presentation command queue. Can be equal to graphicsQueue.
-    /// </summary>
-    VkQueue presentQueue;
     /// <summary>
     /// size of the swap chain images - normally will be the size of the window
     /// </summary>
@@ -180,9 +148,9 @@ struct VkContext
     /// The pipeline object. At the moment I have only one material (shaders + fixed states configs) so
     /// i have only one pipeline. In the future if i need more materials then i'll need more pipelines bc
     /// they are static and i can't change their shaders and fixed function properties once created.
-    /// </summary>
+    /// </summary>FcommandBuffers
     VkPipeline graphicsPipeline;
-    VkCommandPool commandPool;
+
     /// <summary>
     /// Table of command buffers, one for each frame in flight (not one for each swap chain image)
     /// </summary>
@@ -254,18 +222,8 @@ void DestroyVkInstance(VkInstance instance);
 /// <summary>
 void DestroyVkInstance(VkInstance instance, const CustomAllocators& allocators);
 
-void SelectPhysicalDevice(VkContext& ctx);
  
 std::optional<uint32_t> FindGraphicsQueueFamily(VkPhysicalDevice device);
-
-void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector<const char*> validationLayers);
-
-void DestroyLogicalDevice(VkContext& ctx);
-
-void CreateSurface(VkContext& ctx, GLFWwindow* window);
-
-void DestroySurface(VkContext& ctx);
-
 std::optional<uint32_t> FindPresentationQueueFamily(VkPhysicalDevice device, VkSurfaceKHR surface);
 
 void CreateSwapChain(VkContext& ctx);
@@ -299,9 +257,9 @@ void CreateFramebuffersForOnscreenRenderPass(VkContext& ctx, VkImageView depthIm
 
 void DestroyFramebuffers(VkContext& ctx);
 
-void CreateCommandPool(VkContext& ctx);
+//void CreateCommandPool(VkContext& ctx);
 
-void DestroyCommandPool(VkContext& ctx);
+//void DestroyCommandPool(VkContext& ctx);
 
 void CreateCommandBuffer(VkContext& ctx);
 
@@ -334,7 +292,11 @@ void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryPropertyFlags properties, VkBuffer& buffer, 
     VkDeviceMemory& bufferMemory, VkContext& ctx);
 
-void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size, VkContext& ctx);
+void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties, VkBuffer& buffer,
+    VkDeviceMemory& bufferMemory, VkDevice device);
+
+void CopyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 #pragma region hello_pipeline
 /// <summary>
 /// Because hello shader has 2 sets i need to create a descriptor set layout for each
@@ -384,8 +346,8 @@ bool BeginFrame(VkContext& ctx, uint32_t& imageIndex);
 /// </summary>
 void EndFrame(VkContext& ctx, uint32_t currentImageIndex);
 
-void DrawGameObject(entities::GameObject* go, CameraUniformBuffer& camera, VkContext& ctx);
-
 void CreateHelloPipeline(VkContext& ctx);
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkContext ctx);
+
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

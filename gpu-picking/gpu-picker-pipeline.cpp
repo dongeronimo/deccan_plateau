@@ -4,8 +4,9 @@
 #include <stdexcept>
 #include <concatenate.h>
 #include <object_namer.h>
-#include "entities/game-object.h"
+#include "entities/renderable.h"
 #include "entities/mesh.h"
+#include "vk\my-device.h"
 static VkBuffer buffer = VK_NULL_HANDLE;
 static VkDeviceMemory bufferMemory = VK_NULL_HANDLE;
 VkDeviceSize bufferSize;
@@ -22,9 +23,9 @@ namespace GpuPicker {
 
         using namespace entities;
         //load the shader modules
-        vertexShaderModule = Pipeline::LoadShaderModule(ctx->device, 
+        vertexShaderModule = Pipeline::LoadShaderModule(myvk::Device::gDevice->GetDevice(), 
             "gpu_picker_vert.spv");
-        fragmentShaderModule = Pipeline::LoadShaderModule(ctx->device, 
+        fragmentShaderModule = Pipeline::LoadShaderModule(myvk::Device::gDevice->GetDevice(), 
             "gpu_picker_frag.spv");
         //description of the shader stages
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages = Pipeline::CreateShaderStageInfoForVertexAndFragment(
@@ -96,7 +97,7 @@ namespace GpuPicker {
         //we use no push constants for now
         pipelineLayoutInfo.pushConstantRangeCount = 1; // Optional
         pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange; // Optional
-        if (vkCreatePipelineLayout(ctx->device, &pipelineLayoutInfo,
+        if (vkCreatePipelineLayout(myvk::Device::gDevice->GetDevice(), &pipelineLayoutInfo,
             nullptr, &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -118,7 +119,7 @@ namespace GpuPicker {
         //the actual pipeline
         VkGraphicsPipelineCreateInfo pipelineInfo{};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pipelineInfo.stageCount = shaderStages.size();
+        pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
         pipelineInfo.pStages = shaderStages.data();    //add the shader stages
         //set the states
         pipelineInfo.pVertexInputState = &vertexInputInfo;
@@ -134,7 +135,7 @@ namespace GpuPicker {
         //link the render pass to the pipeline
         pipelineInfo.renderPass = mRenderPass;
         pipelineInfo.subpass = 0;
-        if (vkCreateGraphicsPipelines(ctx->device, VK_NULL_HANDLE,
+        if (vkCreateGraphicsPipelines(myvk::Device::gDevice->GetDevice(), VK_NULL_HANDLE,
             1,//number of pipelines 
             &pipelineInfo, //list of pipelines (only one) 
             nullptr, &pipeline) != VK_SUCCESS) {
@@ -142,8 +143,19 @@ namespace GpuPicker {
         }
         SET_NAME(pipeline, VK_OBJECT_TYPE_PIPELINE, name.c_str());
         //the shader modules are no longer necessary by now.
-        vkDestroyShaderModule(ctx->device, vertexShaderModule, nullptr);
-        vkDestroyShaderModule(ctx->device, fragmentShaderModule, nullptr);
+        vkDestroyShaderModule(myvk::Device::gDevice->GetDevice(), vertexShaderModule, nullptr);
+        vkDestroyShaderModule(myvk::Device::gDevice->GetDevice(), fragmentShaderModule, nullptr);
+    }
+
+    GpuPickerPipeline::~GpuPickerPipeline()
+    {
+        vkDestroyPipeline(myvk::Device::gDevice->GetDevice(), pipeline, nullptr);
+        //for (auto dsl : descriptorSetLayouts) {
+        //    vkDestroyDescriptorSetLayout(myvk::Device::gDevice->GetDevice(), dsl, nullptr);
+        //}
+        vkDestroyPipelineLayout(myvk::Device::gDevice->GetDevice(), pipelineLayout, nullptr);
+        vkFreeMemory(myvk::Device::gDevice->GetDevice(), bufferMemory, nullptr);
+        vkDestroyBuffer(myvk::Device::gDevice->GetDevice(), buffer, nullptr);
     }
 
     void GpuPickerPipeline::Bind(VkCommandBuffer cmd)
@@ -152,7 +164,7 @@ namespace GpuPicker {
             VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     }
 
-    void GpuPickerPipeline::DrawGameObject(entities::GameObject* go, CameraUniformBuffer* camera, VkCommandBuffer cmdBuffer)
+    void GpuPickerPipeline::DrawRenderable(entities::Renderable* go, CameraUniformBuffer* camera, VkCommandBuffer cmdBuffer)
     {
         SetMark({ 1.0f, 0.8f, 1.0f, 1.0f }, go->mName, cmdBuffer, *mCtx);
         //copies camera data to gpu
@@ -202,7 +214,11 @@ namespace GpuPicker {
             0,
             0,
             0);
-        mCtx->vkCmdDebugMarkerEndEXT(cmdBuffer);
+        static PFN_vkCmdDebugMarkerEndEXT __vkCmdDebugMarkerEndEXT;
+        if (__vkCmdDebugMarkerEndEXT == VK_NULL_HANDLE) {
+            __vkCmdDebugMarkerEndEXT = (PFN_vkCmdDebugMarkerEndEXT)vkGetDeviceProcAddr(myvk::Device::gDevice->GetDevice(), "vkCmdDebugMarkerEndEXT");
+        }
+        __vkCmdDebugMarkerEndEXT(cmdBuffer);
     }
 
     void GpuPickerPipeline::ScheduleTransferImageFromGPUtoCPU(VkCommandBuffer cmd,
@@ -245,23 +261,23 @@ namespace GpuPicker {
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;  // Only one queue will use this buffer
 
         if (buffer == VK_NULL_HANDLE) {
-            if (vkCreateBuffer(mCtx->device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+            if (vkCreateBuffer(myvk::Device::gDevice->GetDevice(), &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to create buffer!");
             }
             SET_NAME(buffer, VK_OBJECT_TYPE_BUFFER, "gpuPickerBuffer");
         }
         VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(mCtx->device, buffer, &memRequirements);
+        vkGetBufferMemoryRequirements(myvk::Device::gDevice->GetDevice(), buffer, &memRequirements);
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, *mCtx);
         if (bufferMemory == VK_NULL_HANDLE) {
-            if (vkAllocateMemory(mCtx->device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+            if (vkAllocateMemory(myvk::Device::gDevice->GetDevice(), &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to allocate buffer memory!");
             }
             SET_NAME(bufferMemory, VK_OBJECT_TYPE_DEVICE_MEMORY, "gpuPickerBufferMemory");
-            vkBindBufferMemory(mCtx->device, buffer, bufferMemory, 0);
+            vkBindBufferMemory(myvk::Device::gDevice->GetDevice(), buffer, bufferMemory, 0);
         }
 
         //copy the content from the image to the buffer
@@ -296,7 +312,7 @@ namespace GpuPicker {
         ////Copies to the vector
         //std::vector<uint8_t> pixels(bufferSize);
         //void* bufferAddr = nullptr;
-        //vkMapMemory(mCtx->device, bufferMemory, 0, bufferSize, 0, &bufferAddr);
+        //vkMapMemory(myvk::Device::gDevice->GetDevice(), bufferMemory, 0, bufferSize, 0, &bufferAddr);
         //memcpy(pixels.data(), bufferAddr, bufferSize);
 
     }
@@ -305,9 +321,9 @@ namespace GpuPicker {
     {
         std::vector<uint8_t> pixels(bufferSize, 0);
         void* bufferAddr = nullptr;
-        vkMapMemory(mCtx->device, bufferMemory, 0, bufferSize, 0, &bufferAddr);
+        vkMapMemory(myvk::Device::gDevice->GetDevice(), bufferMemory, 0, bufferSize, 0, &bufferAddr);
         memcpy(pixels.data(), bufferAddr, bufferSize);
-        vkUnmapMemory(mCtx->device, bufferMemory);
+        vkUnmapMemory(myvk::Device::gDevice->GetDevice(), bufferMemory);
         return pixels;
     }
 
