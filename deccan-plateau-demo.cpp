@@ -243,8 +243,16 @@ int main(int argc, char** argv)
     DestroySwapChain(vkContext);
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
-    //DestroyCommandPool(vkContext);
 
+    vkFreeCommandBuffers(device->GetDevice(), device->GetCommandPool(), vkContext.commandBuffers.size(), vkContext.commandBuffers.data());
+    vkDestroyFramebuffer(device->GetDevice(), vkContext.mRTTFramebuffer, nullptr);
+    vkDestroyRenderPass(device->GetDevice(), vkContext.mRenderToTextureRenderPass, nullptr);
+    vkDestroySampler(device->GetDevice(), vkContext.helloSampler, nullptr);
+    vkDestroyDescriptorPool(device->GetDevice(), vkContext.helloSamplerDescriptorPool, nullptr);
+    //vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloCameraDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloObjectDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloSamplerDescriptorSetLayout, nullptr);
+    
     delete foo;
     delete bar;
     delete woo;

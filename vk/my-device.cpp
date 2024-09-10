@@ -80,6 +80,7 @@ namespace myvk {
     }
     Device::~Device()
     {
+        vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
         vkDestroyDevice(mDevice, nullptr);
     }
     std::optional<uint32_t> Device::FindGraphicsQueueFamily(VkPhysicalDevice device)

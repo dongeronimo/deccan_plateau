@@ -62,17 +62,6 @@ struct alignas(16) CameraUniformBuffer {
     /// </summary>
     alignas(16)glm::mat4 proj;
 };
-///// <summary>
-///// Holds object-specific data. Corresponds to ObjectUniformBuffer in 
-///// hello_shader.vert
-///// </summary>
-//struct alignas(16) ObjectUniformBuffer {
-//    /// <summary>
-//    /// Model matrix
-//    /// </summary>
-//    alignas(16)glm::mat4 model;
-//};
-
 
 //TODO: Move it somewhere more appropriate
 //Returns the vertex binding, it'll be one binding, with input per-vertex and stride equals to the
@@ -86,11 +75,7 @@ std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions();
 /// </summary>
 struct VkContext
 {
-    //PFN_vkCmdDebugMarkerBeginEXT vkCmdDebugMarkerBeginEXT = nullptr;
-    //PFN_vkCmdDebugMarkerEndEXT vkCmdDebugMarkerEndEXT = nullptr;
-    //PFN_vkCmdDebugMarkerInsertEXT vkCmdDebugMarkerInsertEXT = nullptr;
-
-    GLFWwindow* window = nullptr;//TODO: kill me
+    //GLFWwindow* window = nullptr;//TODO: kill me
     /// <summary>
     /// TODO: Allow for many custom allocators, one for each situation
     /// Holds the function pointer for the custom allocator callbacks
@@ -100,7 +85,7 @@ struct VkContext
     /// The Vk library instance, the first thing to be created and the last to be
     /// destroyed. Thru it we get the physical devices.
     /// </summary>
-    VkInstance instance = VK_NULL_HANDLE;//TODO kill me
+    //VkInstance instance = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// Debug messenger obj
     /// </summary>
@@ -117,23 +102,6 @@ struct VkContext
     /// Id of the present queue family in physicalDevice. Can be the same as graphicsFamily
     /// </summary>
     uint32_t presentFamily;
-    /// <summary>
-    /// The logical device, that we use to interact with the gpu
-    /// </summary>
-    //VkDevice device = VK_NULL_HANDLE;//TODO kill me
-    /// <summary>
-    /// Graphics command queue. Can be the equal to presentQueue, which means that the queue supports
-    /// both categories of commands
-    /// </summary>
-    //VkQueue graphicsQueue = VK_NULL_HANDLE;//TODO kill me
-    /// <summary>
-    /// THe surface is the glue between the window system and vk.
-    /// </summary>
-    //VkSurfaceKHR surface = VK_NULL_HANDLE;//TODO kill me
-    /// <summary>
-    /// Presentation command queue. Can be equal to graphicsQueue.
-    /// </summary>
-    //VkQueue presentQueue = VK_NULL_HANDLE;//TODO kill me
     /// <summary>
     /// size of the swap chain images - normally will be the size of the window
     /// </summary>
@@ -180,9 +148,9 @@ struct VkContext
     /// The pipeline object. At the moment I have only one material (shaders + fixed states configs) so
     /// i have only one pipeline. In the future if i need more materials then i'll need more pipelines bc
     /// they are static and i can't change their shaders and fixed function properties once created.
-    /// </summary>
+    /// </summary>FcommandBuffers
     VkPipeline graphicsPipeline;
-    //VkCommandPool commandPool; //TODO: kill me
+
     /// <summary>
     /// Table of command buffers, one for each frame in flight (not one for each swap chain image)
     /// </summary>
@@ -254,18 +222,8 @@ void DestroyVkInstance(VkInstance instance);
 /// <summary>
 void DestroyVkInstance(VkInstance instance, const CustomAllocators& allocators);
 
-//void SelectPhysicalDevice(VkContext& ctx);
  
 std::optional<uint32_t> FindGraphicsQueueFamily(VkPhysicalDevice device);
-
-//void CreateLogicalQueue(VkContext& ctx, bool enableValidationLayers, std::vector<const char*> validationLayers);
-
-//void DestroyLogicalDevice(VkContext& ctx);
-
-//void CreateSurface(VkContext& ctx, GLFWwindow* window);
-
-//void DestroySurface(VkContext& ctx);
-
 std::optional<uint32_t> FindPresentationQueueFamily(VkPhysicalDevice device, VkSurfaceKHR surface);
 
 void CreateSwapChain(VkContext& ctx);
