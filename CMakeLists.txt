@@ -58,8 +58,8 @@ target_link_libraries(assimp  zlibstatic)
 
 # Add the executable
 add_executable(deccan-plateau-demo 
-    commandBufferUtils.cpp
-    commandBufferUtils.h
+    utils/commandBufferUtils.cpp
+    utils/commandBufferUtils.h
     deccan-plateau-demo.cpp 
     deccan-plateau-demo.h 
     my-vk.cpp 

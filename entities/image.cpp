@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include "utils/object_namer.h"
 #include "utils/concatenate.h"
-#include "commandBufferUtils.h"
+#include "utils/commandBufferUtils.h"
 #include "vk/my-device.h"
 #include "vk/my-instance.h"
 void SetImageObjName(VkImage img, const std::string& baseName) {
