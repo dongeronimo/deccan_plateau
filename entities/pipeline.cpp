@@ -1,9 +1,9 @@
 #include "pipeline.h"
 #include <io/asset-paths.h>
 #include <fstream>
-#include "concatenate.h"
+#include "utils/concatenate.h"
 #include "my-vk.h"
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include "renderable.h"
 #include "mesh.h"
 #include "vk/my-device.h"

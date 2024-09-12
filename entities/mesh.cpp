@@ -1,7 +1,7 @@
 #include "mesh.h"
 #include "my-vk.h"
 #include <stdexcept>
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include "commandBufferUtils.h"
 #include "vk/my-device.h"
 #include "vk/my-instance.h"

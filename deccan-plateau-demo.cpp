@@ -7,14 +7,14 @@
 #include <cstdlib>
 #include <algorithm>
 #include <vector>
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include "entities/game-object.h"
 #include <chrono>
 #include "entities/mesh.h"
 #include "entities/image.h"
 #include "io/mesh-load.h"
 #include "io/image-load.h"
-#include "concatenate.h"
+#include "utils/concatenate.h"
 #include "entities/pipeline.h"
 #include "gpu-picking/gpu-picker-pipeline.h"
 #include "entities/renderable.h"
@@ -118,18 +118,7 @@ int main(int argc, char** argv)
     CreateDescriptorSetLayoutForCamera(vkContext);
     CreateDescriptorSetLayoutForObject(vkContext);
     CreateDescriptorSetLayoutForSampler(vkContext);
-    //vkContext.window = window;
-    //vkContext.clearColor = { 1.0f, 0.0f, 1.0f, 1.0f };
-    //vkContext.customAllocators.myAllocationFunction = myAllocationFunction;
-    //vkContext.customAllocators.myReallocationFunction = myReallocationFunction;
-    //vkContext.customAllocators.myFreeFunction = myFreeFunction;
-    //CreateVkInstance(vkContext.instance, vkContext.customAllocators);
-    //SetupDebugMessenger(vkContext.instance, vkContext.debugMessenger, vkContext.customAllocators);
-    //CreateSurface(vkContext, window);
-    //SelectPhysicalDevice(vkContext);
-    //CreateLogicalQueue(vkContext, EnableValidationLayers(), GetValidationLayerNames());
-    //it's best to create the namer as soon as possible.
-    //CreateCommandPool(vkContext);
+
     //create the textures
     io::ImageData* brickImageData = io::LoadImage("brick.png");
     brickImageData->name = "brick.png";
@@ -244,7 +233,8 @@ int main(int argc, char** argv)
     DestroyImageViews(vkContext);
     DestroySyncObjects(vkContext);
 
-    vkFreeCommandBuffers(device->GetDevice(), device->GetCommandPool(), vkContext.commandBuffers.size(), vkContext.commandBuffers.data());
+    vkFreeCommandBuffers(device->GetDevice(), device->GetCommandPool(), 
+        static_cast<uint32_t>(vkContext.commandBuffers.size()), vkContext.commandBuffers.data());
     vkDestroyFramebuffer(device->GetDevice(), vkContext.mRTTFramebuffer, nullptr);
     vkDestroyRenderPass(device->GetDevice(), vkContext.mRenderToTextureRenderPass, nullptr);
     vkDestroySampler(device->GetDevice(), vkContext.helloSampler, nullptr);

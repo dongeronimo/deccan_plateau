@@ -2,7 +2,7 @@
 #include <cassert>
 #include <set>
 #include <vector>
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include <stdexcept>
 namespace myvk {
     Device* Device::gDevice;

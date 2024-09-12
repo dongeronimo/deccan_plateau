@@ -1,7 +1,7 @@
 #include "game-object.h"
 #include <stdexcept>
-#include "object_namer.h"
-#include "concatenate.h"
+#include "utils/object_namer.h"
+#include "utils/concatenate.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>

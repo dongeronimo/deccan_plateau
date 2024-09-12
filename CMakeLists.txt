@@ -70,9 +70,9 @@ add_executable(deccan-plateau-demo
     my-vk-validationLayers.h
 	my-vk-shaders.cpp
 	my-vk-shaders.h
-	object_namer.cpp
-	object_namer.h
-	concatenate.h
+	utils/object_namer.cpp
+	utils/object_namer.h
+	utils/concatenate.h
     entities/pipeline.cpp
     entities/pipeline.h
     entities/game-object.cpp

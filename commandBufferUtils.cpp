@@ -1,5 +1,5 @@
 #include "commandBufferUtils.h"
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include <cassert>
 VkCommandBuffer CreateCommandBuffer(VkCommandPool commandPool,
     VkDevice device,

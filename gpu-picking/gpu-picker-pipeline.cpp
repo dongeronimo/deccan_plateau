@@ -2,8 +2,8 @@
 #include "entities/pipeline.h"
 #include "my-vk.h"
 #include <stdexcept>
-#include <concatenate.h>
-#include <object_namer.h>
+#include <utils/concatenate.h>
+#include <utils/object_namer.h>
 #include "entities/renderable.h"
 #include "entities/mesh.h"
 #include "vk\my-device.h"

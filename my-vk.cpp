@@ -10,13 +10,13 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "object_namer.h"
+#include "utils/object_namer.h"
 #include <chrono>
 #include "entities/game-object.h"
 #include "io/asset-paths.h"
 #include "entities/mesh.h"
 #include "entities/image.h"
-#include "concatenate.h"
+#include "utils/concatenate.h"
 #include "vk/my-device.h"
 #include "vk/my-instance.h"
 VkApplicationInfo GetAppInfo() {
