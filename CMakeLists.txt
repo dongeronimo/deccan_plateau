@@ -56,48 +56,27 @@ set(ASSIMP_BUILD_ZLIB OFF)
 set(ASSIMP_BUILD_TESTS OFF)
 target_link_libraries(assimp  zlibstatic)
 
+file(GLOB utils_files "utils/*.cpp" "utils/*.h")
+file(GLOB app_files "app/*.cpp" "app/*.h")
+file(GLOB vk_files "vk/*.cpp" "vk/*.h")
+file(GLOB entities_files "entities/*.cpp" "entities/*.h")
+file(GLOB io_files "io/*.cpp" "io/*.h")
+file(GLOB gpu_picker_files "gpu-picking/*.cpp" "gpu-picking/*.h")
+
+source_group("utils" FILES ${utils_files})
+source_group("app" FILES ${app_files})
+source_group("vk" FILES ${vk_files})
+source_group("entities" FILES ${entities_files})
+source_group("io" FILES ${io_files})
+source_group("gpu_picker" FILES ${gpu_picker_files})
 # Add the executable
 add_executable(deccan-plateau-demo 
-    utils/commandBufferUtils.cpp
-    utils/commandBufferUtils.h
-    app/deccan-plateau-demo.cpp 
-    app/deccan-plateau-demo.h 
-    vk/my-vk.cpp 
-    vk/my-vk.h
-    vk/my-vk-extensions.cpp
-    vk/my-vk-extensions.h
-    vk/my-vk-validationLayers.cpp
-    vk/my-vk-validationLayers.h
-	vk/my-vk-shaders.cpp
-	vk/my-vk-shaders.h
-	utils/object_namer.cpp
-	utils/object_namer.h
-	utils/concatenate.h
-    entities/pipeline.cpp
-    entities/pipeline.h
-    entities/game-object.cpp
-    entities/game-object.h
-    entities/mesh.cpp
-    entities/mesh.h
-    entities/image.cpp
-    entities/image.h
-    entities/renderable.h
-    entities/renderable.cpp
-    io/asset-paths.cpp
-    io/asset-paths.h
-    io/mesh-data.h
-    io/mesh-load.cpp
-    io/mesh-load.h
-    io/stb_image.h
-    io/stb_image_write.h
-    io/image-load.h
-    io/image-load.cpp
-    gpu-picking/gpu-picker-pipeline.cpp
-    gpu-picking/gpu-picker-pipeline.h
-    vk/my-instance.h
-    vk/my-instance.cpp
-    vk/my-device.cpp
-    vk/my-device.h
+    ${utils_files}
+    ${app_files}
+    ${vk_files}
+    ${entities_files}
+    ${io_files}
+    ${gpu_picker_files}
 )
 target_include_directories(deccan-plateau-demo PRIVATE .)
 # Include GLM headers
