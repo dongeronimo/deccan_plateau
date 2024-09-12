@@ -1,6 +1,6 @@
 #include "my-instance.h"
-#include "my-vk-validationLayers.h"
-#include "my-vk-extensions.h"
+#include "vk/my-vk-validationLayers.h"
+#include "vk/my-vk-extensions.h"
 #include <stdexcept>
 #include <cassert>
 namespace myvk {

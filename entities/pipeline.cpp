@@ -2,7 +2,7 @@
 #include <io/asset-paths.h>
 #include <fstream>
 #include "utils/concatenate.h"
-#include "my-vk.h"
+#include "vk/my-vk.h"
 #include "utils/object_namer.h"
 #include "renderable.h"
 #include "mesh.h"

@@ -62,14 +62,14 @@ add_executable(deccan-plateau-demo
     utils/commandBufferUtils.h
     deccan-plateau-demo.cpp 
     deccan-plateau-demo.h 
-    my-vk.cpp 
-    my-vk.h
-    my-vk-extensions.cpp
-    my-vk-extensions.h
-    my-vk-validationLayers.cpp
-    my-vk-validationLayers.h
-	my-vk-shaders.cpp
-	my-vk-shaders.h
+    vk/my-vk.cpp 
+    vk/my-vk.h
+    vk/my-vk-extensions.cpp
+    vk/my-vk-extensions.h
+    vk/my-vk-validationLayers.cpp
+    vk/my-vk-validationLayers.h
+	vk/my-vk-shaders.cpp
+	vk/my-vk-shaders.h
 	utils/object_namer.cpp
 	utils/object_namer.h
 	utils/concatenate.h

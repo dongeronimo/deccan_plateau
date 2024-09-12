@@ -5,7 +5,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "my-vk.h"
+#include "vk/my-vk.h"
 #include "vk/my-device.h"
 #include "vk/my-instance.h"
 #include <map>

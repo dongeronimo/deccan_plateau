@@ -1,6 +1,6 @@
 #include "gpu-picker-pipeline.h"
 #include "entities/pipeline.h"
-#include "my-vk.h"
+#include "vk/my-vk.h"
 #include <stdexcept>
 #include <utils/concatenate.h>
 #include <utils/object_namer.h>

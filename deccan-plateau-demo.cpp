@@ -1,7 +1,7 @@
 #include "deccan-plateau-demo.h"
-#include "my-vk.h"
-#include "my-vk-extensions.h"
-#include "my-vk-validationLayers.h"
+#include "vk/my-vk.h"
+#include "vk/my-vk-extensions.h"
+#include "vk/my-vk-validationLayers.h"
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>

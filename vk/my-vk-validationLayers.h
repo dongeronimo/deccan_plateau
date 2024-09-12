@@ -1,6 +1,6 @@
 #pragma once
 #include <vulkan/vulkan.h>
-#include "my-vk.h"
+#include "vk/my-vk.h"
 #include <vector>
 
 std::vector<const char*> GetValidationLayerNames();
