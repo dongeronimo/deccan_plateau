@@ -22,67 +22,12 @@
 #include "vk/my-device.h"
 
 std::map<std::string, entities::Mesh*> gMeshTable;
-entities::Pipeline* helloForSwapChain = nullptr;
-//entities::Pipeline* helloForRenderToTexture = nullptr;
+entities::Pipeline* gBrickTexturePipeline = nullptr;
+entities::Pipeline* gBlackBrickTexturePipeline = nullptr;
+entities::Pipeline* gFloor01TexturePipeline = nullptr;
 GpuPicker::GpuPickerPipeline* gpuPickerPipeline = nullptr;
 entities::RenderToTextureTargetManager* rttManager = nullptr;
 VkContext vkContext{};
-
-const char* VkSystemAllocationScopeToString(VkSystemAllocationScope s) {
-    switch (s) {
-        case VK_SYSTEM_ALLOCATION_SCOPE_COMMAND:
-            return "VK_SYSTEM_ALLOCATION_SCOPE_COMMAND";
-        case VK_SYSTEM_ALLOCATION_SCOPE_OBJECT:
-            return "VK_SYSTEM_ALLOCATION_SCOPE_OBJECT";
-        case VK_SYSTEM_ALLOCATION_SCOPE_CACHE:
-            return "VK_SYSTEM_ALLOCATION_SCOPE_CACHE";
-        case VK_SYSTEM_ALLOCATION_SCOPE_DEVICE:
-            return "VK_SYSTEM_ALLOCATION_SCOPE_DEVICE";
-        case VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE:
-            return "VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE";
-        default:
-            return "INVALID VK SYSTEM ALLOCATION SCOPE";
-    }
-}
-void* myAllocationFunction(
-    void* pUserData,
-    size_t size,
-    size_t alignment,
-    VkSystemAllocationScope allocationScope) {
-    //TODO: Use some cool custom allocator
-    void* result = _aligned_malloc(size, alignment);//visual studio lacks std::aligned_alloc 
-#ifdef PRINT_ALLOCATIONS 
-    printf("allocated %zu bytes with %zu alignment @%p for scope %s\n", size, alignment, result, 
-        VkSystemAllocationScopeToString( allocationScope ));
-#endif
-    return result;
-}
-
-void* myReallocationFunction(
-    void* pUserData,
-    void* pOriginal,
-    size_t size,
-    size_t alignment,
-    VkSystemAllocationScope allocationScope) {
-    // Implement custom reallocation logic
-    void* result = _aligned_realloc(pOriginal, size, alignment);
-    //TODO: Use some cool custom allocator
-#ifdef PRINT_ALLOCATIONS
-    printf("reallocated %zu bytes with %zu alignment from @%p to @%p for scope %d\n",
-        size, alignment, pOriginal, result, VkSystemAllocationScope(allocationScope));
-#endif
-    return result;
-}
-
-void myFreeFunction(
-    void* pUserData,
-    void* pMemory) {
-    //TODO: Use some cool custom allocator
-#ifdef PRINT_ALLOCATIONS 
-    printf("deleting @%p\n", pMemory);
-#endif
-    _aligned_free(pMemory);
-}
 std::vector<entities::Renderable*> gRenderables{};
 
 int main(int argc, char** argv)
@@ -161,11 +106,21 @@ int main(int argc, char** argv)
     //the main difference between these 2 pipelines is that one renders to the swap chain, the other
     //to a texture. That's because each of them uses a different render pass, and one render pass 
     //goes to the swap chain and other to a texture.
-    helloForSwapChain = new entities::Pipeline(&vkContext, 
+    gBrickTexturePipeline = new entities::Pipeline(&vkContext, 
         vkContext.mSwapchainRenderPass, 
         descriptorSetLayouts,
-        "helloForSwapChain",
+        "brickPipeline",
+        brickDescriptorSet);
+    gBlackBrickTexturePipeline = new entities::Pipeline(&vkContext,
+        vkContext.mSwapchainRenderPass,
+        descriptorSetLayouts,
+        "blackBrickPipeline",
         blackBrickDescriptorSet);
+    gFloor01TexturePipeline = new entities::Pipeline(&vkContext,
+        vkContext.mSwapchainRenderPass,
+        descriptorSetLayouts,
+        "floor01Pipeline",
+        floor01DescriptorSet);
 
     gpuPickerPipeline = new GpuPicker::GpuPickerPipeline(&vkContext,
         vkContext.mRenderToTextureRenderPass,//TODO: Create a render pass for gpu picker
@@ -194,9 +149,7 @@ int main(int argc, char** argv)
 
 
     CreateUniformBuffersForCamera(vkContext);
-    //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
-   CreateDescriptorSetsForCamera(vkContext);
-    CreateDescriptorSetsForSampler(vkContext, gpuTextureManager, "floor01.jpg");
+    CreateDescriptorSetsForCamera(vkContext);
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
 
@@ -211,12 +164,15 @@ int main(int argc, char** argv)
     //now that all vulkan infra is created we create the game objects
     entities::Renderable* foo = new entities::Renderable(&vkContext, "foo", monkeyMesh);
     foo->SetPosition(glm::vec3{ 1,0,0 });
+    foo->mPipeline = entities::BlackBrick;
     entities::Renderable* bar = new entities::Renderable(&vkContext, "bar", cubeMesh);
     bar->SetPosition(glm::vec3{ -1,0,0 });
-    gRenderables.push_back(foo);
-    gRenderables.push_back(bar);
+    bar->mPipeline = entities::Brick;
     entities::Renderable* woo = new entities::Renderable(&vkContext, "woo", monkeyMesh);
     woo->SetPosition(glm::vec3{ 0,4,0 });
+    woo->mPipeline = entities::Floor01;
+    gRenderables.push_back(foo);
+    gRenderables.push_back(bar);
     gRenderables.push_back(woo);
     MainLoop(window);
 
@@ -224,7 +180,9 @@ int main(int argc, char** argv)
     //cleanup
     vkDeviceWaitIdle(myvk::Device::gDevice->GetDevice());
     delete gpuPickerPipeline;
-    delete helloForSwapChain;
+    delete gBrickTexturePipeline;
+    delete gBlackBrickTexturePipeline;
+    delete gFloor01TexturePipeline;
     delete rttManager;
     delete brickImageData;
     delete gpuTextureManager;
@@ -313,10 +271,24 @@ void MainLoop(GLFWwindow* window)
                 vkContext.swapChainExtent,
                 onscreenClearValues
             );
-            helloForSwapChain->Bind(currentCommand);
-            for (auto go : gRenderables) {
-                helloForSwapChain->DrawRenderable(go, &cameraBuffer, 
+            for (auto& go : gRenderables) {
+                entities::Pipeline* chosenPipeline = nullptr;
+                switch (go->mPipeline) {                   
+                    case entities::Brick:
+                        chosenPipeline = gBrickTexturePipeline;
+                        break;
+                    case entities::BlackBrick:
+                        chosenPipeline = gBlackBrickTexturePipeline;
+                        break;
+                    case entities::Floor01:
+                        chosenPipeline = gFloor01TexturePipeline;
+                        break;
+                }
+                assert(chosenPipeline != nullptr);
+                chosenPipeline->Bind(currentCommand);
+                chosenPipeline->DrawRenderable(go, &cameraBuffer,
                     vkContext.commandBuffers[vkContext.currentFrame]);
+
             }
             //end the on-screen render pass
 

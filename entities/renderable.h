@@ -1,6 +1,9 @@
 #pragma once
 #include "game-object.h"
 namespace entities {
+    enum Pipelines {
+        Brick, BlackBrick, Floor01
+    };
     /// <summary>
     /// Things that can be rendered, like meshes.
     /// </summary>
@@ -10,5 +13,6 @@ namespace entities {
             const std::string& name,
             const Mesh* mesh);
         const Mesh* mMesh;
+        Pipelines mPipeline;
     };
 }
