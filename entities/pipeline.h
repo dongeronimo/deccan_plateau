@@ -19,8 +19,10 @@ namespace entities {
         Pipeline(VkContext* ctx,
             VkRenderPass renderPass,
             std::vector<VkDescriptorSetLayout> descriptorSetLayouts,
-            const std::string& name
+            const std::string& name,
+            std::vector<VkDescriptorSet> samplerDescriptorSets
         );
+        const std::vector<VkDescriptorSet> mSamplerDescriptorSets;
         static std::vector<VkPipelineShaderStageCreateInfo> CreateShaderStageInfoForVertexAndFragment(VkShaderModule vs, VkShaderModule fs);
         ~Pipeline();
         const std::string mName;

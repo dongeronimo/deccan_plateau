@@ -140,28 +140,33 @@ int main(int argc, char** argv)
     //render pass depends upon the depth buffer
     CreateSwapchainRenderPass(vkContext);
     CreateRenderToTextureRenderPass(vkContext);
-    CreateHelloSampler(vkContext);
+    CreateSamplers(vkContext);
     //because the uniform buffer pool relies on descriptor set layouts the layouts must be ready
     //before the uniform buffer pool is created
     entities::GameObjectUniformBufferPool::Initialize(&vkContext);
+    CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
 
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
         vkContext.helloCameraDescriptorSetLayout,//set 0
         vkContext.helloObjectDescriptorSetLayout,//set 1
         vkContext.helloSamplerDescriptorSetLayout //set 2
     };
+    std::vector<VkDescriptorSet> brickDescriptorSet = GenerateSamplerDescriptorSetsForTexture(vkContext.helloSamplerDescriptorPool, 
+        vkContext.helloSamplerDescriptorSetLayout, gpuTextureManager, vkContext.linearNormalizedRepeatUVSampler, "brick.png");
+    std::vector<VkDescriptorSet> blackBrickDescriptorSet = GenerateSamplerDescriptorSetsForTexture(vkContext.helloSamplerDescriptorPool,
+        vkContext.helloSamplerDescriptorSetLayout, gpuTextureManager, vkContext.linearNormalizedRepeatUVSampler, "blackBrick.png");
+    std::vector<VkDescriptorSet> floor01DescriptorSet = GenerateSamplerDescriptorSetsForTexture(vkContext.helloSamplerDescriptorPool,
+        vkContext.helloSamplerDescriptorSetLayout, gpuTextureManager, vkContext.linearNormalizedRepeatUVSampler, "floor01.jpg");
+
     //the main difference between these 2 pipelines is that one renders to the swap chain, the other
     //to a texture. That's because each of them uses a different render pass, and one render pass 
     //goes to the swap chain and other to a texture.
     helloForSwapChain = new entities::Pipeline(&vkContext, 
         vkContext.mSwapchainRenderPass, 
         descriptorSetLayouts,
-        "helloForSwapChain");
-    //helloForRenderToTexture = new entities::Pipeline(&vkContext, 
-    //    vkContext.mRenderToTextureRenderPass, 
-    //    descriptorSetLayouts,
-    //    "helloForRenderToTexture");
-    //
+        "helloForSwapChain",
+        blackBrickDescriptorSet);
+
     gpuPickerPipeline = new GpuPicker::GpuPickerPipeline(&vkContext,
         vkContext.mRenderToTextureRenderPass,//TODO: Create a render pass for gpu picker
         { vkContext.helloCameraDescriptorSetLayout, 
@@ -190,8 +195,7 @@ int main(int argc, char** argv)
 
     CreateUniformBuffersForCamera(vkContext);
     //CreateUniformBuffersForObject(vkContext);//For now it'll live here but when i have my game objects, it'll go to them
-    CreateDescriptorPool(vkContext);//for now i create  both pools at the same place. In the future i'll have some kind of pool manager
-    CreateDescriptorSetsForCamera(vkContext);
+   CreateDescriptorSetsForCamera(vkContext);
     CreateDescriptorSetsForSampler(vkContext, gpuTextureManager, "floor01.jpg");
     CreateCommandBuffer(vkContext);
     CreateSyncObjects(vkContext);
@@ -237,7 +241,7 @@ int main(int argc, char** argv)
         static_cast<uint32_t>(vkContext.commandBuffers.size()), vkContext.commandBuffers.data());
     vkDestroyFramebuffer(device->GetDevice(), vkContext.mRTTFramebuffer, nullptr);
     vkDestroyRenderPass(device->GetDevice(), vkContext.mRenderToTextureRenderPass, nullptr);
-    vkDestroySampler(device->GetDevice(), vkContext.helloSampler, nullptr);
+    vkDestroySampler(device->GetDevice(), vkContext.linearNormalizedRepeatUVSampler, nullptr);
     vkDestroyDescriptorPool(device->GetDevice(), vkContext.helloSamplerDescriptorPool, nullptr);
     //vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloCameraDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(device->GetDevice(), vkContext.helloObjectDescriptorSetLayout, nullptr);

@@ -34,8 +34,10 @@ namespace entities {
     Pipeline::Pipeline(VkContext* ctx,
         VkRenderPass renderPass,
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts,
-        const std::string& name):
-        mCtx(ctx),mRenderPass(renderPass),mName(name), descriptorSetLayouts(descriptorSetLayouts)
+        const std::string& name,
+        std::vector<VkDescriptorSet> samplerDescriptorSets):
+        mCtx(ctx),mRenderPass(renderPass),mName(name), descriptorSetLayouts(descriptorSetLayouts),
+        mSamplerDescriptorSets(samplerDescriptorSets)
     {
         //load the shader modules
         vertexShaderModule = LoadShaderModule(myvk::Device::gDevice->GetDevice(), "hello_shader_vert.spv");
@@ -227,7 +229,7 @@ namespace entities {
             pipelineLayout,
             2, //third set
             1,
-            &mCtx->helloSamplerDescriptorSets[mCtx->currentFrame],
+            &mSamplerDescriptorSets[mCtx->currentFrame],
             0,
             nullptr
         );

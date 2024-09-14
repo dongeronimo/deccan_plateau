@@ -191,11 +191,15 @@ struct VkContext
     /// </summary>
     VkDescriptorPool helloCameraDescriptorPool = VK_NULL_HANDLE;
     VkDescriptorPool helloSamplerDescriptorPool = VK_NULL_HANDLE;
-    VkSampler helloSampler = VK_NULL_HANDLE;
+    VkSampler linearNormalizedRepeatUVSampler = VK_NULL_HANDLE;
 
 };
-
-void CreateHelloSampler(VkContext& ctx);
+/// <summary>
+/// I create the samplers here.
+/// For now I create only a linear, normalized, repeat non-mipmapped sampler (linearNormalizedRepeatUVSampler)
+/// </summary>
+/// <param name="ctx"></param>
+void CreateSamplers(VkContext& ctx);
 
 void DestroyImageViews(VkContext& ctx);
 /// <summary>
@@ -319,6 +323,8 @@ void CreateUniformBuffersForCamera(VkContext& vkContext);
 /// <param name="ctx"></param>
 void CreateDescriptorSetsForCamera(VkContext& ctx);
 void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager*, const std::string& name);
+std::vector<VkDescriptorSet> GenerateSamplerDescriptorSetsForTexture(VkDescriptorPool samplerDescriptorPool, 
+    VkDescriptorSetLayout samplerDescriptorSetLayout, entities::GpuTextureManager* manager, VkSampler sampler, const std::string& name);
 void CreateDescriptorSetLayoutForObject(VkContext& ctx);
 void CreateDescriptorSetLayoutForSampler(VkContext& ctx);
 /// <summary>

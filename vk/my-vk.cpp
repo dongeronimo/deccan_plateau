@@ -60,7 +60,7 @@ std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
     return attributeDescriptions;
 }
 
-void CreateHelloSampler(VkContext& ctx)
+void CreateSamplers(VkContext& ctx)
 {
     
     VkSamplerCreateInfo samplerInfo{};
@@ -81,10 +81,10 @@ void CreateHelloSampler(VkContext& ctx)
     samplerInfo.mipLodBias = 0.0f;
     samplerInfo.minLod = 0.0f;
     samplerInfo.maxLod = 0.0f;
-    if (vkCreateSampler(myvk::Device::gDevice->GetDevice(), &samplerInfo, nullptr, &ctx.helloSampler) != VK_SUCCESS) {
+    if (vkCreateSampler(myvk::Device::gDevice->GetDevice(), &samplerInfo, nullptr, &ctx.linearNormalizedRepeatUVSampler) != VK_SUCCESS) {
         throw std::runtime_error("failed to create texture sampler!");
     }
-    SET_NAME(ctx.helloSampler, VK_OBJECT_TYPE_SAMPLER, "HelloPipelineSampler");
+    SET_NAME(ctx.linearNormalizedRepeatUVSampler, VK_OBJECT_TYPE_SAMPLER, "HelloPipelineSampler");
 }
 
 void DestroyImageViews(VkContext& ctx) {
@@ -1141,15 +1141,16 @@ void CreateDescriptorPool(VkContext& ctx)
     }
     SET_NAME(ctx.helloCameraDescriptorPool, VK_OBJECT_TYPE_DESCRIPTOR_POOL, "helloCameraDescriptorPool");
     //////CREATES THE DESCRIPTOR POOL FOR SAMPLERS//////
+    const int numberOfSamplers = 100 * MAX_FRAMES_IN_FLIGHT;
     VkDescriptorPoolSize samplerPoolSize{};
     samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerPoolSize.descriptorCount = MAX_FRAMES_IN_FLIGHT;
+    samplerPoolSize.descriptorCount = numberOfSamplers;
 
     VkDescriptorPoolCreateInfo samplerPoolInfo{};
     samplerPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     samplerPoolInfo.poolSizeCount = 1;
     samplerPoolInfo.pPoolSizes = &samplerPoolSize;
-    samplerPoolInfo.maxSets = 1 * MAX_FRAMES_IN_FLIGHT; // Only one sampler. NEVER FORGET TO MULTIPLY BY MAX_FRAMES_IN_
+    samplerPoolInfo.maxSets = numberOfSamplers;
 
     if (vkCreateDescriptorPool(myvk::Device::gDevice->GetDevice(), &samplerPoolInfo, nullptr, &ctx.helloSamplerDescriptorPool) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create sampler descriptor pool!");
@@ -1215,7 +1216,7 @@ void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager*
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         imageInfo.imageView = view;
-        imageInfo.sampler = ctx.helloSampler;
+        imageInfo.sampler = ctx.linearNormalizedRepeatUVSampler;
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrite.dstSet = ctx.helloSamplerDescriptorSets[i];
@@ -1226,6 +1227,47 @@ void CreateDescriptorSetsForSampler(VkContext& ctx, entities::GpuTextureManager*
         descriptorWrite.pImageInfo = &imageInfo;
         vkUpdateDescriptorSets(myvk::Device::gDevice->GetDevice(), 1, &descriptorWrite, 0, nullptr);
     }
+}
+
+std::vector<VkDescriptorSet> GenerateSamplerDescriptorSetsForTexture(VkDescriptorPool samplerDescriptorPool,
+    VkDescriptorSetLayout samplerDescriptorSetLayout,
+    entities::GpuTextureManager* manager,
+    VkSampler sampler,
+    const std::string& name)
+{
+    assert(samplerDescriptorPool != VK_NULL_HANDLE);
+    //one layout for each frame in flight, create the vector filling with the layout that i alredy have
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+        samplerDescriptorSetLayout);
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = samplerDescriptorPool;
+    //one descriptor set for each frame in flight
+    allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    allocInfo.pSetLayouts = layouts.data();
+    std::vector<VkDescriptorSet> descriptorSets(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(myvk::Device::gDevice->GetDevice(), &allocInfo,
+        descriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets");
+    }
+    VkImageView view = manager->GetImageView(name);
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = view;
+        imageInfo.sampler = sampler;
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = descriptorSets[i];
+        descriptorWrite.dstBinding = 0;
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &imageInfo;
+        vkUpdateDescriptorSets(myvk::Device::gDevice->GetDevice(), 1, &descriptorWrite, 0, nullptr);
+    }
+    return descriptorSets;
 }
 
 void VkContext::DestroyCameraBuffer(VkContext& ctx)
